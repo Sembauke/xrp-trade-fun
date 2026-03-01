@@ -9,7 +9,7 @@ import { AlertTriangle } from 'lucide-react';
 import { WidgetHelp } from './components/WidgetHelp';
 import { PortfolioWidget } from './components/PortfolioWidget';
 
-export default function App({ apiBase }: { apiBase?: string }) {
+export default function App({ apiBase, expectedSymbol }: { apiBase?: string; expectedSymbol?: string }) {
   const regimeNederlands = (regime: string) => {
     if (regime === 'BULL') return 'Bull';
     if (regime === 'BEAR') return 'Bear';
@@ -24,7 +24,7 @@ export default function App({ apiBase }: { apiBase?: string }) {
     sweep, sweepLoading, sweepError,
     strategy, symbol,
     toggleRunning,
-  } = useTradingBot(apiBase);
+  } = useTradingBot(apiBase, expectedSymbol);
 
   return (
     <div className="min-h-screen bg-surface-950 flex flex-col">
@@ -59,7 +59,7 @@ export default function App({ apiBase }: { apiBase?: string }) {
 
           {/* Top row: Algorithm | Marktstatistieken */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <AlgorithmStatus decision={decision} />
+          <AlgorithmStatus decision={decision} symbol={symbol} />
             <div className="card flex flex-col justify-between gap-3">
               <h2 className="text-slate-400 text-xs font-semibold uppercase tracking-widest">Marktstatistieken</h2>
               <WidgetHelp title="Marktstatistieken">
@@ -93,10 +93,11 @@ export default function App({ apiBase }: { apiBase?: string }) {
             currentPrice={currentPrice}
             avgCostBasis={portfolio.avgCostBasis}
             totalValue={totalValue}
+            symbol={symbol}
           />
 
           {/* Chart */}
-          <PriceChart data={chartData} currentPrice={currentPrice} />
+          <PriceChart data={chartData} currentPrice={currentPrice} symbol={symbol} />
 
           {/* Signals */}
           {decision && decision.signals.length > 0 && (
@@ -114,7 +115,7 @@ export default function App({ apiBase }: { apiBase?: string }) {
             lastOptimized={strategy.lastOptimized}
           />
           {/* Trade History */}
-          <TradeHistory trades={trades} currentPrice={currentPrice} />
+          <TradeHistory trades={trades} currentPrice={currentPrice} symbol={symbol} />
 
         </main>
       )}

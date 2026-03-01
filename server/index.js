@@ -112,7 +112,7 @@ async function maybeOptimize(force = false) {
     if (!force && Date.now() - lastOptimizedMs < OPTIMIZE_MS) return;
 
     const sweep = await runBacktestSweep({
-      symbol: 'XRPUSDT',
+      symbol: SYMBOL,
       days: 365,
       executionInterval: '1h',
       top: 1,
@@ -176,7 +176,7 @@ app.get('/api/backtest', async (req, res) => {
   try {
     const days = Number(req.query.days ?? 365);
     const executionInterval = String(req.query.executionInterval ?? '1h');
-    const symbol = String(req.query.symbol ?? 'XRPUSDT');
+    const symbol = String(req.query.symbol ?? SYMBOL);
     const strategyState = loadStrategyState(db);
     const cacheKey = `${symbol}:${executionInterval}:${days}:${strategyState.variant}:${strategyState.lastOptimized ?? 'none'}`;
     const cached = cacheGet(cacheKey);
@@ -203,7 +203,7 @@ app.get('/api/backtest/sweep', async (req, res) => {
   try {
     const days = Number(req.query.days ?? 365);
     const executionInterval = String(req.query.executionInterval ?? '1h');
-    const symbol = String(req.query.symbol ?? 'XRPUSDT');
+    const symbol = String(req.query.symbol ?? SYMBOL);
     const top = Number(req.query.top ?? 5);
     const cacheKey = `sweep:${symbol}:${executionInterval}:${days}:${top}`;
 

@@ -7,6 +7,7 @@ interface PortfolioWidgetProps {
   currentPrice: number;
   avgCostBasis: number;
   totalValue: number;
+  symbol?: string;
 }
 
 export function PortfolioWidget({
@@ -15,10 +16,12 @@ export function PortfolioWidget({
   currentPrice,
   avgCostBasis,
   totalValue,
+  symbol = 'XRPUSDT',
 }: PortfolioWidgetProps) {
-  const xrpValue = xrp * currentPrice;
+  const assetLabel = symbol.replace('USDT', '');
+  const assetValue = xrp * currentPrice;
   const usdPct = totalValue > 0 ? (usd / totalValue) * 100 : 0;
-  const xrpPct = totalValue > 0 ? (xrpValue / totalValue) * 100 : 0;
+  const xrpPct = totalValue > 0 ? (assetValue / totalValue) * 100 : 0;
   const positionPnl = xrp > 0 && avgCostBasis > 0
     ? (currentPrice - avgCostBasis) * xrp
     : 0;
@@ -33,9 +36,7 @@ export function PortfolioWidget({
         <h2 className="text-slate-400 text-xs font-semibold uppercase tracking-widest">Portefeuille-overzicht</h2>
       </div>
       <WidgetHelp title="Portefeuille-overzicht">
-        Deze widget laat in een oogopslag je totale waarde, cash, XRP-positie en allocatie zien.
-        Je ziet ook direct de actuele ongerealiseerde winst of het verlies op de XRP-positie
-        op basis van de huidige marktprijs.
+        {`Deze widget laat in een oogopslag je totale waarde, cash, ${assetLabel}-positie en allocatie zien. Je ziet ook direct de actuele ongerealiseerde winst of het verlies op de ${assetLabel}-positie op basis van de huidige marktprijs.`}
       </WidgetHelp>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
@@ -49,9 +50,9 @@ export function PortfolioWidget({
           <p className="text-slate-500 text-xs">{usdPct.toFixed(1)}%</p>
         </div>
         <div className="bg-surface-700/40 rounded-xl p-3">
-          <p className="text-slate-500 text-xs mb-1 inline-flex items-center gap-1.5"><Coins size={12} /> XRP-positie</p>
-          <p className="text-white font-mono font-semibold">${xrpValue.toFixed(2)}</p>
-          <p className="text-slate-500 text-xs">{xrp.toFixed(2)} XRP ({xrpPct.toFixed(1)}%)</p>
+          <p className="text-slate-500 text-xs mb-1 inline-flex items-center gap-1.5"><Coins size={12} /> {assetLabel}-positie</p>
+          <p className="text-white font-mono font-semibold">${assetValue.toFixed(2)}</p>
+          <p className="text-slate-500 text-xs">{xrp.toFixed(2)} {assetLabel} ({xrpPct.toFixed(1)}%)</p>
         </div>
         <div className="bg-surface-700/40 rounded-xl p-3">
           <p className="text-slate-500 text-xs mb-1">Ongerealiseerde W/V</p>
@@ -67,7 +68,7 @@ export function PortfolioWidget({
       <div className="mt-4">
         <div className="flex justify-between text-xs text-slate-500 mb-1.5">
           <span>Allocatie USD {usdPct.toFixed(1)}%</span>
-          <span>Allocatie XRP {xrpPct.toFixed(1)}%</span>
+          <span>Allocatie {assetLabel} {xrpPct.toFixed(1)}%</span>
         </div>
         <div className="h-2 bg-surface-700 rounded-full overflow-hidden flex">
           <div className="h-full bg-sky-500 transition-all duration-700" style={{ width: `${usdPct}%` }} />

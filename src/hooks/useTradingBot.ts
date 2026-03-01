@@ -4,34 +4,36 @@ import { BacktestResult, BacktestSweepResult, BotState } from '../types';
 const POLL_MS = 30_000;
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8787';
 
-const defaultState: BotState = {
-  candles: [],
-  currentPrice: 0,
-  previousPrice: 0,
-  portfolio: {
-    usd: 10_000,
-    xrp: 0,
-    startingValue: 10_000,
-    avgCostBasis: 0,
-  },
-  trades: [],
-  decision: null,
-  indicators: null,
-  chartData: [],
-  isLoading: true,
-  isRunning: true,
-  error: null,
-  lastUpdate: null,
-  totalValue: 10_000,
-  pnl: 0,
-  pnlPct: 0,
-  symbol: 'XRPUSDT',
-  strategy: {
-    variant: 'balanced',
-    autoOptimize: true,
-    lastOptimized: null,
-  },
-};
+function buildDefaultState(symbol = 'XRPUSDT'): BotState {
+  return {
+    candles: [],
+    currentPrice: 0,
+    previousPrice: 0,
+    portfolio: {
+      usd: 10_000,
+      xrp: 0,
+      startingValue: 10_000,
+      avgCostBasis: 0,
+    },
+    trades: [],
+    decision: null,
+    indicators: null,
+    chartData: [],
+    isLoading: true,
+    isRunning: true,
+    error: null,
+    lastUpdate: null,
+    totalValue: 10_000,
+    pnl: 0,
+    pnlPct: 0,
+    symbol,
+    strategy: {
+      variant: 'balanced',
+      autoOptimize: true,
+      lastOptimized: null,
+    },
+  };
+}
 
 async function request<T>(base: string, path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${base}${path}`, {
@@ -52,11 +54,17 @@ async function request<T>(base: string, path: string, init?: RequestInit): Promi
     throw new Error(message);
   }
 
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await response.text();
+    throw new Error(`Ongeldige API-respons (${response.status} ${response.statusText}) · verwacht JSON van ${base}${path} maar kreeg: ${text.slice(0, 120)}`);
+  }
+
   return response.json() as Promise<T>;
 }
 
-export function useTradingBot(apiBase?: string) {
-  const [state, setState] = useState<BotState>(defaultState);
+export function useTradingBot(apiBase?: string, expectedSymbol = 'XRPUSDT') {
+  const [state, setState] = useState<BotState>(() => buildDefaultState(expectedSymbol));
   const [backtest, setBacktest] = useState<BacktestResult | null>(null);
   const [backtestLoading, setBacktestLoading] = useState(false);
   const [backtestError, setBacktestError] = useState<string | null>(null);
@@ -70,10 +78,11 @@ export function useTradingBot(apiBase?: string) {
       const next = await request<BotState>(apiBase ?? API_BASE, '/api/state');
       setState(next);
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load state';
       setState((prev) => ({
         ...prev,
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to load state',
+        error: `${message} · controleer of de ${apiBase ?? API_BASE} API draait`,
       }));
     }
   }, [apiBase]);

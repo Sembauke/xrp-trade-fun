@@ -9,6 +9,7 @@ import { WidgetHelp } from './WidgetHelp';
 interface PriceChartProps {
   data: ChartPoint[];
   currentPrice: number;
+  symbol?: string;
 }
 
 const CustomTooltip = ({ active, payload, label }: {
@@ -31,7 +32,8 @@ const CustomTooltip = ({ active, payload, label }: {
   );
 };
 
-export function PriceChart({ data, currentPrice }: PriceChartProps) {
+export function PriceChart({ data, currentPrice, symbol = 'XRPUSDT' }: PriceChartProps) {
+  const assetLabel = symbol.replace('USDT', '');
   if (data.length === 0) {
     return (
       <div className="card flex items-center justify-center h-80">
@@ -62,9 +64,7 @@ export function PriceChart({ data, currentPrice }: PriceChartProps) {
         </div>
       </div>
       <WidgetHelp title="Prijsgrafiek">
-        Deze grafiek toont de recente XRP-prijs met EMA20, EMA50 en EMA200 voor trendrichting.
-        De Bollinger-banden geven volatiliteit en mogelijke overreacties aan. De gestippelde lijn
-        is de huidige prijs, zodat je direct ziet waar de markt nu staat ten opzichte van trends.
+        {`Deze grafiek toont de recente ${assetLabel}-prijs met EMA20, EMA50 en EMA200 voor trendrichting. De Bollinger-banden geven volatiliteit en mogelijke overreacties aan. De gestippelde lijn is de huidige prijs, zodat je direct ziet waar de markt nu staat ten opzichte van trends.`}
       </WidgetHelp>
 
       <ResponsiveContainer width="100%" height={300}>

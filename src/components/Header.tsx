@@ -19,6 +19,7 @@ export function Header({
   const priceDelta = previousPrice > 0
     ? ((currentPrice - previousPrice) / previousPrice) * 100
     : 0;
+  const assetLabel = symbol.replace('USDT', '');
 
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-b border-white/5 bg-surface-800/60 backdrop-blur-sm">
@@ -41,15 +42,13 @@ export function Header({
           </p>
         </div>
         <WidgetHelp title="Kopbalk">
-          Hier zie je de live XRP/USDT-koers, de procentuele verandering sinds de vorige update en de
-          huidige status van de bot. Met Pauze stopt alle automatische activiteit (traden en optimaliseren).
-          Met Hervatten gaat alles weer automatisch verder.
+          {`Hier zie je de live ${assetLabel}/USDT-koers, de procentuele verandering sinds de vorige update en de huidige status van de bot. Met Pauze stopt alle automatische activiteit (traden en optimaliseren). Met Hervatten gaat alles weer automatisch verder.`}
         </WidgetHelp>
       </div>
 
       {/* Live Price */}
       <div className="flex flex-col items-center">
-        <span className="text-slate-400 text-xs mb-0.5 uppercase tracking-widest">{symbol.replace('USDT','')} / USDT</span>
+        <span className="text-slate-400 text-xs mb-0.5 uppercase tracking-widest">{assetLabel} / USDT</span>
         <div className="flex items-baseline gap-2">
           <span className="text-2xl font-bold text-white font-mono">
             ${currentPrice.toFixed(4)}

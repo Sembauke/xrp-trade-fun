@@ -4,6 +4,7 @@ import { WidgetHelp } from './WidgetHelp';
 
 interface AlgorithmStatusProps {
   decision: Decision | null;
+  symbol?: string;
 }
 
 const actionConfig = {
@@ -28,7 +29,7 @@ function translateReason(reason: string) {
     .replace('score', 'score');
 }
 
-export function AlgorithmStatus({ decision }: AlgorithmStatusProps) {
+export function AlgorithmStatus({ decision, symbol = 'XRPUSDT' }: AlgorithmStatusProps) {
   if (!decision) {
     return (
       <div className="card flex items-center justify-center h-full min-h-32">
@@ -47,6 +48,8 @@ export function AlgorithmStatus({ decision }: AlgorithmStatusProps) {
     : decision.strength === 'WEAK'
       ? 'ZWAK'
       : 'NORMAAL';
+
+  const assetLabel = symbol.replace('USDT', '');
 
   return (
     <div className="card">
@@ -97,8 +100,8 @@ export function AlgorithmStatus({ decision }: AlgorithmStatusProps) {
           <Zap size={11} className="text-yellow-400" />
           <span>
             {decision.action === 'BUY'
-              ? `Koop ~${decision.amount.toFixed(2)} XRP`
-              : `Verkoop ~${decision.amount.toFixed(2)} XRP`}
+              ? `Koop ~${decision.amount.toFixed(2)} ${assetLabel}`
+              : `Verkoop ~${decision.amount.toFixed(2)} ${assetLabel}`}
           </span>
         </div>
       )}

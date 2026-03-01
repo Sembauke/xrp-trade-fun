@@ -10,17 +10,19 @@ interface PortfolioCardProps {
   pnl: number;
   pnlPct: number;
   tradeCount: number;
+  symbol?: string;
 }
 
 export function PortfolioCard({
-  totalValue, usd, xrp, avgCostBasis, currentPrice, pnl, pnlPct, tradeCount,
+  totalValue, usd, xrp, avgCostBasis, currentPrice, pnl, pnlPct, tradeCount, symbol = 'XRPUSDT',
 }: PortfolioCardProps) {
   const isPositive = pnl >= 0;
+  const assetLabel = symbol.replace('USDT', '');
   const xrpValue = xrp * currentPrice;
   const xrpPct = totalValue > 0 ? (xrpValue / totalValue) * 100 : 0;
   const usdPct = totalValue > 0 ? (usd / totalValue) * 100 : 100;
 
-  // Unrealized P&L on the open XRP position
+  // Unrealized P&L on the open asset position
   const unrealizedPnl = xrp > 0 && avgCostBasis > 0
     ? (currentPrice - avgCostBasis) * xrp
     : 0;
@@ -36,9 +38,7 @@ export function PortfolioCard({
         <span className="text-slate-500 text-xs">{tradeCount} transacties</span>
       </div>
       <WidgetHelp title="Portfolio">
-        Deze kaart toont je totale waarde, gerealiseerde en ongerealiseerde winst/verlies, en de verdeling
-        tussen cash (USD) en XRP. De allocatiebalk laat zien welk deel van je portefeuille in XRP zit
-        versus cash.
+        {`Deze kaart toont je totale waarde, gerealiseerde en ongerealiseerde winst/verlies, en de verdeling tussen cash (USD) en ${assetLabel}. De allocatiebalk laat zien welk deel van je portefeuille in ${assetLabel} zit versus cash.`}
       </WidgetHelp>
 
       {/* Total value + overall P&L */}
@@ -59,7 +59,7 @@ export function PortfolioCard({
       <div className="mb-4">
         <div className="flex text-xs text-slate-500 mb-1.5 justify-between">
           <span>USD {usdPct.toFixed(0)}%</span>
-          <span>XRP {xrpPct.toFixed(0)}%</span>
+          <span>{assetLabel} {xrpPct.toFixed(0)}%</span>
         </div>
         <div className="h-2 bg-surface-700 rounded-full overflow-hidden flex">
           <div
@@ -86,7 +86,7 @@ export function PortfolioCard({
           </p>
         </div>
 
-        {/* XRP position with unrealized P&L */}
+        {/* Asset position with unrealized P&L */}
         <div className={`rounded-xl p-3 transition-colors ${
           xrp > 0
             ? posIsUp ? 'bg-emerald-500/5 border border-emerald-500/10' : 'bg-red-500/5 border border-red-500/10'
@@ -94,10 +94,10 @@ export function PortfolioCard({
         }`}>
           <div className="flex items-center gap-1.5 mb-1">
             <Coins size={12} className="text-indigo-400" />
-            <span className="text-slate-500 text-xs">XRP-positie</span>
+            <span className="text-slate-500 text-xs">{assetLabel}-positie</span>
           </div>
           <p className="text-white font-mono font-semibold text-sm">
-            {xrp.toFixed(2)} <span className="text-slate-500 font-normal text-xs">XRP</span>
+            {xrp.toFixed(2)} <span className="text-slate-500 font-normal text-xs">{assetLabel}</span>
           </p>
           <p className="text-slate-400 font-mono text-xs">
             ${xrpValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

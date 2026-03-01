@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm:server\" \"vite\"",
+    "dev": "concurrently \"npm:server\" \"npm:server:btc\" \"vite\"",
+    "dev:xrp": "concurrently \"npm:server\" \"vite\"",
     "server": "node server/index.js",
     "server:btc": "SYMBOL=BTCUSDT STARTING_CAPITAL=20000 DB_PATH=data/trading-btc.db PORT=8788 node server/index.js",
     "dev:btc": "concurrently \"npm:server:btc\" \"vite --port 5175\"",

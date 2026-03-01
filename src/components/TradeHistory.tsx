@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 interface TradeHistoryProps {
   trades: Trade[];
   currentPrice: number;
+  symbol?: string;
 }
 
 function translateReason(reason: string) {
@@ -17,7 +18,7 @@ function translateReason(reason: string) {
     .replace('score', 'score');
 }
 
-export function TradeHistory({ trades, currentPrice }: TradeHistoryProps) {
+export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT' }: TradeHistoryProps) {
   const pageSize = 10;
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(trades.length / pageSize));
@@ -58,8 +59,7 @@ export function TradeHistory({ trades, currentPrice }: TradeHistoryProps) {
         <span className="text-slate-500 text-xs">{trades.length} totaal · Pagina {page}/{totalPages}</span>
       </div>
       <WidgetHelp title="Handelshistorie">
-        Transacties worden automatisch uitgevoerd door het algoritme. Live P&L per regel wordt continu
-        herberekend op basis van de huidige XRP-prijs. Groen is positief, rood is negatief.
+        {`Transacties worden automatisch uitgevoerd door het algoritme. Live P&L per regel wordt continu herberekend op basis van de huidige ${symbol.replace('USDT', '')}-prijs. Groen is positief, rood is negatief.`}
       </WidgetHelp>
 
       <div className="overflow-x-auto">
@@ -112,7 +112,7 @@ export function TradeHistory({ trades, currentPrice }: TradeHistoryProps) {
                     ${trade.price.toFixed(4)}
                   </td>
                   <td className="py-2.5 text-right font-mono text-white text-xs">
-                    {trade.amount.toFixed(2)} <span className="text-slate-500">XRP</span>
+                    {trade.amount.toFixed(2)} <span className="text-slate-500">{symbol.replace('USDT', '')}</span>
                   </td>
                   <td className="py-2.5 text-right font-mono text-slate-300 text-xs">
                     ${trade.usdValue.toFixed(2)}
