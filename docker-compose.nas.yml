@@ -1,0 +1,26 @@
+# ── NAS deployment ────────────────────────────────────────────────────────────
+# Copy only this file to your NAS + create an empty data/ folder next to it.
+# Image is published automatically by GitHub Actions on every push to main.
+#
+#   docker compose -f docker-compose.nas.yml pull
+#   docker compose -f docker-compose.nas.yml up -d
+#
+# To update later (pulls new image, zero-downtime restart):
+#   docker compose -f docker-compose.nas.yml pull && \
+#   docker compose -f docker-compose.nas.yml up -d
+
+services:
+  xrp-bot:
+    # GitHub Actions sets the image name to ghcr.io/<owner>/<repo>:latest (all lowercase)
+    image: ghcr.io/sembauke/xrp-trade-fun:latest
+    ports:
+      - "${PORT:-8787}:8787"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8787/api/health').then(r=>r.ok||process.exit(1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

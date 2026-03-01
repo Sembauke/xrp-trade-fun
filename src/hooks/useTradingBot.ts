@@ -1,0 +1,165 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { BacktestResult, BacktestSweepResult, BotState } from '../types';
+
+const POLL_MS = 30_000;
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8787';
+
+const defaultState: BotState = {
+  candles: [],
+  currentPrice: 0,
+  previousPrice: 0,
+  portfolio: {
+    usd: 10_000,
+    xrp: 0,
+    startingValue: 10_000,
+    avgCostBasis: 0,
+  },
+  trades: [],
+  decision: null,
+  indicators: null,
+  chartData: [],
+  isLoading: true,
+  isRunning: true,
+  error: null,
+  lastUpdate: null,
+  totalValue: 10_000,
+  pnl: 0,
+  pnlPct: 0,
+  strategy: {
+    variant: 'balanced',
+    autoOptimize: true,
+    lastOptimized: null,
+  },
+};
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...init,
+  });
+
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const payload = await response.json();
+      if (payload?.error) {
+        message = String(payload.error);
+      }
+    } catch {
+      // no-op
+    }
+    throw new Error(message);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export function useTradingBot() {
+  const [state, setState] = useState<BotState>(defaultState);
+  const [backtest, setBacktest] = useState<BacktestResult | null>(null);
+  const [backtestLoading, setBacktestLoading] = useState(false);
+  const [backtestError, setBacktestError] = useState<string | null>(null);
+  const [sweep, setSweep] = useState<BacktestSweepResult | null>(null);
+  const [sweepLoading, setSweepLoading] = useState(false);
+  const [sweepError, setSweepError] = useState<string | null>(null);
+  const refreshingRef = useRef(false);
+
+  const loadState = useCallback(async () => {
+    try {
+      const next = await request<BotState>('/api/state');
+      setState(next);
+    } catch (error) {
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        error: error instanceof Error ? error.message : 'Failed to load state',
+      }));
+    }
+  }, []);
+
+  const runAction = useCallback(async (path: string) => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    try {
+      const next = await request<BotState>(path, { method: 'POST' });
+      setState(next);
+    } catch (error) {
+      setState((prev) => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Action failed',
+      }));
+    } finally {
+      refreshingRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    loadState();
+    const interval = setInterval(loadState, POLL_MS);
+    return () => clearInterval(interval);
+  }, [loadState]);
+
+  const toggleRunning = useCallback(() => {
+    runAction('/api/actions/toggle');
+  }, [runAction]);
+
+  const runBacktest = useCallback(async (days = 365, executionInterval = '1h') => {
+    setBacktestLoading(true);
+    setBacktestError(null);
+    try {
+      const params = new URLSearchParams({
+        days: String(days),
+        executionInterval,
+      });
+      const result = await request<BacktestResult>(`/api/backtest?${params.toString()}`);
+      setBacktest(result);
+    } catch (error) {
+      setBacktestError(error instanceof Error ? error.message : 'Backtest failed');
+    } finally {
+      setBacktestLoading(false);
+    }
+  }, []);
+
+  const runSweep = useCallback(async (days = 365, executionInterval = '1h', top = 5) => {
+    setSweepLoading(true);
+    setSweepError(null);
+    try {
+      const params = new URLSearchParams({
+        days: String(days),
+        executionInterval,
+        top: String(top),
+      });
+      const result = await request<BacktestSweepResult>(`/api/backtest/sweep?${params.toString()}`);
+      setSweep(result);
+    } catch (error) {
+      setSweepError(error instanceof Error ? error.message : 'Sweep failed');
+    } finally {
+      setSweepLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!state.isRunning) return;
+    runBacktest(365, '1h');
+    runSweep(365, '1h', 5);
+    const interval = setInterval(() => {
+      runBacktest(365, '1h');
+      runSweep(365, '1h', 5);
+    }, 30 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [state.isRunning, runBacktest, runSweep]);
+
+  return {
+    ...state,
+    lastUpdate: state.lastUpdate ? new Date(state.lastUpdate) : null,
+    backtest,
+    backtestLoading,
+    backtestError,
+    sweep,
+    sweepLoading,
+    sweepError,
+    toggleRunning,
+    runBacktest,
+    runSweep,
+  };
+}

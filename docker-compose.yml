@@ -1,0 +1,20 @@
+services:
+  xrp-bot:
+    build: .
+    # Matches what GitHub Actions pushes: ghcr.io/<owner>/<repo>:latest (lowercase)
+    image: ghcr.io/sembauke/xrp-trade-fun:latest
+    ports:
+      - "${PORT:-8787}:8787"
+    volumes:
+      # SQLite DB persists here on the host / NAS share
+      - ./data:/app/data
+    environment:
+      - PORT=8787
+    restart: unless-stopped
+    # Friendly healthcheck — NAS container managers show this
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8787/api/health').then(r=>r.ok||process.exit(1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
