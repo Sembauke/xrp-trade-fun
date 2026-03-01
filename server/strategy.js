@@ -6,8 +6,8 @@ import {
   computeMaxDrawdown,
 } from './indicators.js';
 
-const STARTING_CAPITAL = 10_000;
-const TRADE_FEE = 0.001;
+export const STARTING_CAPITAL = 10_000;
+export const TRADE_FEE = 0.001;
 
 export const defaultStrategyConfig = {
   maxTradeAllocationStep: 0.18,
@@ -162,6 +162,23 @@ function strengthFromDelta(delta) {
   return 'WEAK';
 }
 
+function calculateATR(candles, period = 14) {
+  if (candles.length < period + 1) return null;
+  const trs = [];
+  for (let i = 1; i < candles.length; i += 1) {
+    const cur = candles[i];
+    const prev = candles[i - 1];
+    const tr = Math.max(
+      cur.high - cur.low,
+      Math.abs(cur.high - prev.close),
+      Math.abs(cur.low - prev.close),
+    );
+    trs.push(tr);
+  }
+  const slice = trs.slice(-period);
+  return slice.reduce((a, b) => a + b, 0) / slice.length;
+}
+
 export function runStrategy({
   candles1m,
   candles4h,
@@ -193,6 +210,8 @@ export function runStrategy({
 
   const macd4h = calculateMACD(closes4h);
   const dayDrawdown = computeMaxDrawdown(closes1d.slice(-90));
+  const atr4h = calculateATR(candles4h, 14);
+  const atrPct = atr4h && price > 0 ? atr4h / price : null;
 
   const regime = getRegime(dayEMA50, dayEMA200, h4EMA50, h4EMA200);
 
@@ -215,6 +234,12 @@ export function runStrategy({
   const currentAllocation = totalValueBefore > 0 ? (portfolio.xrp * price) / totalValueBefore : 0;
 
   let target = targetAllocation(regime, totalScore, strategyConfig);
+  // Volatiliteit-gewogen aanpassing: hogere ATR => lager risico, lage ATR => iets meer risico
+  if (atrPct !== null) {
+    if (atrPct > 0.06) target *= 0.75;
+    else if (atrPct < 0.025) target *= 1.10;
+    target = Math.max(0, Math.min(0.95, target));
+  }
 
   const portfolioDrawdown =
     portfolio.startingValue > 0
@@ -226,8 +251,13 @@ export function runStrategy({
     target = Math.min(target, strategyConfig.drawdownRules.softCapAllocation);
   }
 
+  const stepFactor = atrPct !== null
+    ? (atrPct > 0.06 ? 0.6 : atrPct < 0.025 ? 1.15 : 1.0)
+    : 1.0;
+  const maxStep = strategyConfig.maxTradeAllocationStep * stepFactor;
+
   const rawDelta = target - currentAllocation;
-  const delta = Math.max(-strategyConfig.maxTradeAllocationStep, Math.min(strategyConfig.maxTradeAllocationStep, rawDelta));
+  const delta = Math.max(-maxStep, Math.min(maxStep, rawDelta));
 
   const desiredUsdShift = delta * totalValueBefore;
   const minOrderUsd = strategyConfig.minOrderUsd;
@@ -236,6 +266,7 @@ export function runStrategy({
   let trade = null;
   let action = 'HOLD';
   let amount = 0;
+  let realizedPnl = null;
 
   if (desiredUsdShift > minOrderUsd && nextPortfolio.usd > minOrderUsd) {
     const spend = Math.min(desiredUsdShift, nextPortfolio.usd * 0.95);
@@ -244,9 +275,10 @@ export function runStrategy({
     amount = buyValue / price;
 
     const totalXrpAfter = nextPortfolio.xrp + amount;
+    // Cost basis should include buy fees; "spend" is gross cash outflow.
     const avgCostBasis =
       totalXrpAfter > 0
-        ? (nextPortfolio.xrp * nextPortfolio.avgCostBasis + amount * price) / totalXrpAfter
+        ? (nextPortfolio.xrp * nextPortfolio.avgCostBasis + spend) / totalXrpAfter
         : price;
 
     nextPortfolio = {
@@ -261,6 +293,7 @@ export function runStrategy({
     const sellValue = Math.min(Math.abs(desiredUsdShift), nextPortfolio.xrp * price);
     amount = sellValue / price;
     const fee = sellValue * TRADE_FEE;
+    realizedPnl = (price - nextPortfolio.avgCostBasis) * amount - fee;
 
     const remainingXrp = Math.max(0, nextPortfolio.xrp - amount);
     nextPortfolio = {
@@ -292,6 +325,7 @@ export function runStrategy({
       usdValue: amount * price,
       reason,
       totalAfter: totalValueAfter,
+      realizedPnl,
     };
   }
 

@@ -2,6 +2,7 @@ import { ArrowUpCircle, ArrowDownCircle, Clock } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Trade } from '../types';
 import { WidgetHelp } from './WidgetHelp';
+import { useEffect, useMemo, useState } from 'react';
 
 interface TradeHistoryProps {
   trades: Trade[];
@@ -17,6 +18,19 @@ function translateReason(reason: string) {
 }
 
 export function TradeHistory({ trades, currentPrice }: TradeHistoryProps) {
+  const pageSize = 10;
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(trades.length / pageSize));
+
+  useEffect(() => {
+    setPage((prev) => Math.min(prev, totalPages));
+  }, [totalPages]);
+
+  const currentPageTrades = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return trades.slice(start, start + pageSize);
+  }, [trades, page]);
+
   if (trades.length === 0) {
     return (
       <div className="card">
@@ -41,7 +55,7 @@ export function TradeHistory({ trades, currentPrice }: TradeHistoryProps) {
         <h2 className="text-slate-400 text-xs font-semibold uppercase tracking-widest">
           Handelshistorie
         </h2>
-        <span className="text-slate-500 text-xs">{trades.length} totaal</span>
+        <span className="text-slate-500 text-xs">{trades.length} totaal · Pagina {page}/{totalPages}</span>
       </div>
       <WidgetHelp title="Handelshistorie">
         Transacties worden automatisch uitgevoerd door het algoritme. Live P&L per regel wordt continu
@@ -58,12 +72,13 @@ export function TradeHistory({ trades, currentPrice }: TradeHistoryProps) {
               <th className="pb-2 text-right font-medium">Hoeveelheid</th>
               <th className="pb-2 text-right font-medium">Waarde</th>
               <th className="pb-2 text-right font-medium">Portfolio</th>
+              <th className="pb-2 text-right font-medium">Gerealiseerd W/V</th>
               <th className="pb-2 text-right font-medium">Live W/V</th>
               <th className="pb-2 text-left font-medium pl-4">Reden</th>
             </tr>
           </thead>
           <tbody>
-            {trades.map((trade, i) => {
+            {currentPageTrades.map((trade, i) => {
               const isBuy = trade.action === 'BUY';
               const livePnl = isBuy
                 ? (currentPrice - trade.price) * trade.amount
@@ -71,6 +86,7 @@ export function TradeHistory({ trades, currentPrice }: TradeHistoryProps) {
               const livePnlPct = trade.usdValue > 0
                 ? (livePnl / trade.usdValue) * 100
                 : 0;
+              const hasRealized = trade.action === 'SELL' && typeof trade.realizedPnl === 'number';
               return (
                 <tr
                   key={trade.id}
@@ -105,6 +121,15 @@ export function TradeHistory({ trades, currentPrice }: TradeHistoryProps) {
                     ${trade.totalAfter.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                   </td>
                   <td className={`py-2.5 text-right font-mono text-xs ${
+                    hasRealized
+                      ? (trade.realizedPnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'
+                      : 'text-slate-500'
+                  }`}>
+                    {hasRealized
+                      ? `${(trade.realizedPnl ?? 0) >= 0 ? '+' : ''}${(trade.realizedPnl ?? 0).toFixed(2)}`
+                      : '-'}
+                  </td>
+                  <td className={`py-2.5 text-right font-mono text-xs ${
                     livePnl >= 0 ? 'text-emerald-400' : 'text-red-400'
                   }`}>
                     {livePnl >= 0 ? '+' : ''}{livePnl.toFixed(2)}
@@ -120,6 +145,28 @@ export function TradeHistory({ trades, currentPrice }: TradeHistoryProps) {
             })}
           </tbody>
         </table>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between">
+        <p className="text-xs text-slate-500">
+          Toon {currentPageTrades.length} van {trades.length} transacties
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            className="px-3 py-1.5 rounded-md bg-surface-700 text-slate-300 text-xs disabled:opacity-40"
+            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            disabled={page <= 1}
+          >
+            Vorige
+          </button>
+          <button
+            className="px-3 py-1.5 rounded-md bg-surface-700 text-slate-300 text-xs disabled:opacity-40"
+            onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+            disabled={page >= totalPages}
+          >
+            Volgende
+          </button>
+        </div>
       </div>
     </div>
   );

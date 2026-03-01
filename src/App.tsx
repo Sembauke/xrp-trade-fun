@@ -1,6 +1,5 @@
 import { useTradingBot } from './hooks/useTradingBot';
 import { Header } from './components/Header';
-import { PortfolioCard } from './components/PortfolioCard';
 import { PriceChart } from './components/PriceChart';
 import { SignalsPanel } from './components/SignalsPanel';
 import { AlgorithmStatus } from './components/AlgorithmStatus';
@@ -8,6 +7,7 @@ import { TradeHistory } from './components/TradeHistory';
 import { BacktestPanel } from './components/BacktestPanel';
 import { AlertTriangle } from 'lucide-react';
 import { WidgetHelp } from './components/WidgetHelp';
+import { PortfolioWidget } from './components/PortfolioWidget';
 
 export default function App() {
   const regimeNederlands = (regime: string) => {
@@ -56,18 +56,8 @@ export default function App() {
       ) : (
         <main className="flex-1 p-4 lg:p-6 space-y-4">
 
-          {/* Top row: Portfolio | Algorithm | Signals */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <PortfolioCard
-              totalValue={totalValue}
-              usd={portfolio.usd}
-              xrp={portfolio.xrp}
-              avgCostBasis={portfolio.avgCostBasis}
-              currentPrice={currentPrice}
-              pnl={pnl}
-              pnlPct={pnlPct}
-              tradeCount={trades.length}
-            />
+          {/* Top row: Algorithm | Marktstatistieken */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <AlgorithmStatus decision={decision} />
             <div className="card flex flex-col justify-between gap-3">
               <h2 className="text-slate-400 text-xs font-semibold uppercase tracking-widest">Marktstatistieken</h2>
@@ -96,6 +86,14 @@ export default function App() {
             </div>
           </div>
 
+          <PortfolioWidget
+            usd={portfolio.usd}
+            xrp={portfolio.xrp}
+            currentPrice={currentPrice}
+            avgCostBasis={portfolio.avgCostBasis}
+            totalValue={totalValue}
+          />
+
           {/* Chart */}
           <PriceChart data={chartData} currentPrice={currentPrice} />
 
@@ -114,7 +112,6 @@ export default function App() {
             strategyVariant={strategy.variant}
             lastOptimized={strategy.lastOptimized}
           />
-
           {/* Trade History */}
           <TradeHistory trades={trades} currentPrice={currentPrice} />
 

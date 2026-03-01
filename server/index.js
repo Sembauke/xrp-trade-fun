@@ -231,7 +231,11 @@ const DIST = path.join(__dirname, '..', 'dist');
 
 app.use(express.static(DIST));
 // SPA fallback — must be last, after all /api/* routes
-app.get('*', (_req, res) => {
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    next();
+    return;
+  }
   res.sendFile(path.join(DIST, 'index.html'));
 });
 

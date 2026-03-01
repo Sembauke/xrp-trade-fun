@@ -1,4 +1,9 @@
-import { runStrategy, defaultPortfolio, defaultStrategyConfig } from './strategy.js';
+import {
+  runStrategy,
+  defaultPortfolio,
+  defaultStrategyConfig,
+  TRADE_FEE,
+} from './strategy.js';
 
 const INTERVAL_MS = {
   '1m': 60_000,
@@ -187,6 +192,11 @@ function simulateBacktest(dataset, { strategyConfig = defaultStrategyConfig, var
     const d1Slice = candles1d.slice(0, d1Idx + 1);
     if (h4Slice.length < 210 || d1Slice.length < 210) continue;
 
+    if (pointTime < startTime) {
+      continue;
+    }
+
+    const portfolioBefore = { ...portfolio };
     const result = runStrategy({
       candles1m: execSlice,
       candles4h: h4Slice,
@@ -201,24 +211,33 @@ function simulateBacktest(dataset, { strategyConfig = defaultStrategyConfig, var
     portfolio = result.portfolio;
     equityCurve.push({ time: pointTime, equity: result.totalValue });
 
-    if (pointTime >= startTime && result.trade) {
-      trades.push(result.trade);
+    if (result.trade) {
+      if (result.trade.action === 'SELL') {
+        const sellFee = result.trade.usdValue * TRADE_FEE;
+        const realizedPnl = result.trade.realizedPnl
+          ?? ((result.trade.price - portfolioBefore.avgCostBasis) * result.trade.amount - sellFee);
+        trades.push({
+          ...result.trade,
+          realizedPnl,
+        });
+      } else {
+        trades.push(result.trade);
+      }
     }
   }
 
-  const filteredEquity = equityCurve.filter((point) => point.time >= startTime);
-  const startEquity = filteredEquity[0]?.equity ?? defaultPortfolio.startingValue;
-  const endEquity = filteredEquity[filteredEquity.length - 1]?.equity ?? startEquity;
+  const startEquity = defaultPortfolio.startingValue;
+  const endEquity = equityCurve[equityCurve.length - 1]?.equity ?? startEquity;
 
   const sells = trades.filter((t) => t.action === 'SELL');
-  const winningSells = sells.filter((t) => t.totalAfter > defaultPortfolio.startingValue).length;
+  const winningSells = sells.filter((t) => (t.realizedPnl ?? 0) > 0).length;
 
   const startPrice = execCandles.find((c) => c.time >= startTime)?.close ?? 0;
   const endPrice = execCandles[execCandles.length - 1]?.close ?? 0;
   const benchmarkReturnPct = startPrice > 0 ? ((endPrice - startPrice) / startPrice) * 100 : 0;
 
   const returnPct = startEquity > 0 ? ((endEquity - startEquity) / startEquity) * 100 : 0;
-  const maxDrawdownPct = computeMaxDrawdownFromEquity(filteredEquity) * 100;
+  const maxDrawdownPct = computeMaxDrawdownFromEquity(equityCurve) * 100;
   const winRatePct = sells.length > 0 ? (winningSells / sells.length) * 100 : 0;
 
   return {
@@ -238,7 +257,7 @@ function simulateBacktest(dataset, { strategyConfig = defaultStrategyConfig, var
     avgTradeUsd: trades.length > 0
       ? trades.reduce((sum, trade) => sum + trade.usdValue, 0) / trades.length
       : 0,
-    equityCurve: filteredEquity,
+    equityCurve,
     benchmark: {
       startPrice,
       endPrice,

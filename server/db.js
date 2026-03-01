@@ -9,6 +9,14 @@ function ensureDir() {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 }
 
+function ensureColumn(db, table, column, sqlType) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  const exists = cols.some((c) => c.name === column);
+  if (!exists) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${sqlType}`);
+  }
+}
+
 export function createDb() {
   ensureDir();
   const db = new Database(DB_PATH);
@@ -70,6 +78,7 @@ export function createDb() {
       last_optimized TEXT
     );
   `);
+  ensureColumn(db, 'trades', 'realized_pnl', 'REAL');
 
   const nowIso = new Date().toISOString();
   db.prepare(`
@@ -142,8 +151,12 @@ export function saveCycle(db, payload) {
 
     if (payload.trade) {
       db.prepare(`
-        INSERT OR REPLACE INTO trades (id, time, action, price, amount, usd_value, reason, total_after)
-        VALUES (@id, @time, @action, @price, @amount, @usdValue, @reason, @totalAfter)
+        INSERT OR REPLACE INTO trades (
+          id, time, action, price, amount, usd_value, reason, total_after, realized_pnl
+        )
+        VALUES (
+          @id, @time, @action, @price, @amount, @usdValue, @reason, @totalAfter, @realizedPnl
+        )
       `).run(payload.trade);
     }
 
@@ -301,6 +314,7 @@ export function getState(db) {
       usdValue: row.usd_value,
       reason: row.reason,
       totalAfter: row.total_after,
+      realizedPnl: row.realized_pnl,
     }));
 
   const chartData = db

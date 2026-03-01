@@ -23,6 +23,7 @@ export interface Trade {
   usdValue: number;
   reason: string;
   totalAfter: number;
+  realizedPnl?: number | null;
 }
 
 export interface Signal {
