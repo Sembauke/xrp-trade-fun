@@ -73,6 +73,7 @@ async function runCycle() {
       candles1d,
       portfolio,
       strategyConfig: strategyState.strategyConfig,
+      symbol: SYMBOL,
     });
     saveCycle(db, output);
     return output;

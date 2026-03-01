@@ -189,7 +189,9 @@ export function runStrategy({
   includeChartData = true,
   tradeTimeIso,
   strategyConfig: strategyConfigInput,
+  symbol = 'XRPUSDT',
 }) {
+  const assetLabel = symbol.replace('USDT', '');
   const strategyConfig = mergeStrategyConfig(strategyConfigInput);
   const closes1m = candles1m.map((c) => c.close);
   const closes4h = candles4h.map((c) => c.close);
@@ -314,7 +316,7 @@ export function runStrategy({
   const strength = action === 'HOLD' ? 'NORMAL' : strengthFromDelta(delta);
   const reason = action === 'HOLD'
     ? `Regime ${regime}: wait for higher-confidence setup (score ${totalScore.toFixed(1)})`
-    : `Regime ${regime}: rebalance toward ${(target * 100).toFixed(0)}% XRP (score ${totalScore.toFixed(1)})`;
+    : `Regime ${regime}: rebalance toward ${(target * 100).toFixed(0)}% ${assetLabel} (score ${totalScore.toFixed(1)})`;
 
   if (action !== 'HOLD') {
     trade = {
