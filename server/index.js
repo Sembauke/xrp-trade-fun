@@ -17,7 +17,7 @@ import { runStrategy } from './strategy.js';
 import { runBacktest, runBacktestSweep } from './backtest.js';
 
 const PORT = Number(process.env.PORT || 8787);
-const POLL_MS = 30_000;
+const POLL_MS = Number(process.env.POLL_MS || 60_000);
 const OPTIMIZE_MS = 6 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 5_000;
 
@@ -90,9 +90,9 @@ function createAssetService(config) {
   async function runCycle() {
     try {
       const [candles1m, candles4h, candles1d] = await Promise.all([
-        fetchCandles('1m', 260),
-        fetchCandles('4h', 320),
-        fetchCandles('1d', 320),
+        fetchCandles('1m', 220),
+        fetchCandles('4h', 220),
+        fetchCandles('1d', 220),
       ]);
 
       const portfolio = loadPortfolio(db);
@@ -367,15 +367,16 @@ app.listen(PORT, async () => {
     }
   }
 
-  setInterval(() => {
-    for (const service of Object.values(services)) {
+  const allServices = Object.values(services);
+  allServices.forEach((service, idx) => {
+    const offset = idx * 12_000;
+    setTimeout(() => {
       void service.maybeOptimize();
-    }
-  }, POLL_MS);
-
-  setInterval(() => {
-    for (const service of Object.values(services)) {
       void service.maybeRunCycle();
-    }
-  }, POLL_MS);
+      setInterval(() => {
+        void service.maybeOptimize();
+        void service.maybeRunCycle();
+      }, POLL_MS);
+    }, offset);
+  });
 });

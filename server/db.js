@@ -168,7 +168,7 @@ export function saveCycle(db, payload) {
       INSERT INTO chart_points (time, price, ema20, ema50, ema200, bb_upper, bb_middle, bb_lower)
       VALUES (@time, @price, @ema20, @ema50, @ema200, @bbUpper, @bbMiddle, @bbLower)
     `);
-    for (const point of payload.chartData.slice(-220)) {
+    for (const point of payload.chartData.slice(-140)) {
       insertPoint.run(point);
     }
 
@@ -310,7 +310,7 @@ export function getState(db, symbol = 'XRPUSDT') {
   const portfolio = loadPortfolio(db);
   const bot = db.prepare('SELECT * FROM bot_state WHERE id = 1').get();
   const trades = db
-    .prepare('SELECT * FROM trades ORDER BY time DESC LIMIT 100')
+    .prepare('SELECT * FROM trades ORDER BY time DESC LIMIT 50')
     .all()
     .map((row) => ({
       id: row.id,

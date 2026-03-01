@@ -47,7 +47,7 @@ export function BacktestPanel({
           <h2 className="text-slate-400 text-xs font-semibold uppercase tracking-widest">Backtest</h2>
         </div>
         <div className="text-[11px] text-slate-500 text-right">
-          <p>Modus: volledig automatisch</p>
+          <p>Modus: automatische frontend-analyse</p>
           <p>Actief profiel: <span className="text-slate-300 font-semibold">{strategyVariant}</span></p>
           {lastOptimized && <p>Laatst geoptimaliseerd: {new Date(lastOptimized).toLocaleString()}</p>}
         </div>
@@ -61,10 +61,10 @@ export function BacktestPanel({
 
       {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
       {sweepError && <p className="text-xs text-red-400 mb-2">{sweepError}</p>}
-      {(loading || sweepLoading) && <p className="text-xs text-slate-500 mb-2">Analyses worden automatisch bijgewerkt…</p>}
+      {(loading || sweepLoading) && <p className="text-xs text-slate-500 mb-2">Analyses worden geladen…</p>}
 
       {!backtest ? (
-        <p className="text-slate-500 text-xs">Automatische analyses van rendement, drawdown en benchmark worden verzameld…</p>
+        <p className="text-slate-500 text-xs">Analysegegevens worden automatisch uit live data berekend.</p>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
           {[
