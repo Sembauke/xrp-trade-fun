@@ -9,8 +9,13 @@ import './index.css';
 function deriveApiBase(envValue: string | undefined, fallbackPort: number) {
   if (envValue && envValue.trim() !== '') return envValue.trim();
   const url = new URL(window.location.origin);
-  // In production (e.g. https on NAS) keep same host/port; in dev (localhost with Vite port) swap to API port.
-  if (url.port) {
+  // If we're on localhost with a Vite port, swap to the API port.
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+    url.port = String(fallbackPort);
+    return url.origin;
+  }
+  // On NAS/production (no port in URL), explicitly target the API port to reach the right bot instance.
+  if (!url.port) {
     url.port = String(fallbackPort);
   }
   return url.origin;
