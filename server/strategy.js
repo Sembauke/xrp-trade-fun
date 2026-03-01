@@ -34,12 +34,16 @@ export const defaultStrategyConfig = {
   },
 };
 
-export const defaultPortfolio = {
-  usd: STARTING_CAPITAL,
-  xrp: 0,
-  startingValue: STARTING_CAPITAL,
-  avgCostBasis: 0,
-};
+export function createDefaultPortfolio(startingCapital = STARTING_CAPITAL) {
+  return {
+    usd: startingCapital,
+    xrp: 0,
+    startingValue: startingCapital,
+    avgCostBasis: 0,
+  };
+}
+
+export const defaultPortfolio = createDefaultPortfolio(STARTING_CAPITAL);
 
 function getRegime(dayEMA50, dayEMA200, h4EMA50, h4EMA200) {
   const macroBull = dayEMA50 > dayEMA200;
@@ -190,6 +194,7 @@ export function runStrategy({
   tradeTimeIso,
   strategyConfig: strategyConfigInput,
   symbol = 'XRPUSDT',
+  startingCapital = portfolio?.startingValue ?? STARTING_CAPITAL,
 }) {
   const assetLabel = symbol.replace('USDT', '');
   const strategyConfig = mergeStrategyConfig(strategyConfigInput);
@@ -310,8 +315,8 @@ export function runStrategy({
   }
 
   const totalValueAfter = nextPortfolio.usd + nextPortfolio.xrp * price;
-  const pnl = totalValueAfter - STARTING_CAPITAL;
-  const pnlPct = STARTING_CAPITAL > 0 ? (pnl / STARTING_CAPITAL) * 100 : 0;
+  const pnl = totalValueAfter - startingCapital;
+  const pnlPct = startingCapital > 0 ? (pnl / startingCapital) * 100 : 0;
 
   const strength = action === 'HOLD' ? 'NORMAL' : strengthFromDelta(delta);
   const reason = action === 'HOLD'

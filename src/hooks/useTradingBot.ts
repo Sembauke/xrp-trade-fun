@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { BacktestResult, BacktestSweepResult, BotState } from '../types';
 
 const POLL_MS = 30_000;
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8787';
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? `${window.location.origin}/api/xrp`;
+const REQUEST_TIMEOUT_MS = 5_000;
 
 function buildDefaultState(symbol = 'XRPUSDT'): BotState {
   return {
@@ -36,10 +37,23 @@ function buildDefaultState(symbol = 'XRPUSDT'): BotState {
 }
 
 async function request<T>(base: string, path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${base}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`${base}${path}`, {
+      headers: { 'Content-Type': 'application/json' },
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Timeout na ${REQUEST_TIMEOUT_MS}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     let message = `HTTP ${response.status}`;
@@ -75,7 +89,7 @@ export function useTradingBot(apiBase?: string, expectedSymbol = 'XRPUSDT') {
 
   const loadState = useCallback(async () => {
     try {
-      const next = await request<BotState>(apiBase ?? API_BASE, '/api/state');
+      const next = await request<BotState>(apiBase ?? API_BASE, '/state');
       setState(next);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load state';
@@ -110,7 +124,7 @@ export function useTradingBot(apiBase?: string, expectedSymbol = 'XRPUSDT') {
   }, [loadState]);
 
   const toggleRunning = useCallback(() => {
-    runAction('/api/actions/toggle');
+    runAction('/actions/toggle');
   }, [runAction]);
 
   const runBacktest = useCallback(async (days = 365, executionInterval = '1h') => {
@@ -121,7 +135,7 @@ export function useTradingBot(apiBase?: string, expectedSymbol = 'XRPUSDT') {
         days: String(days),
         executionInterval,
       });
-      const result = await request<BacktestResult>(apiBase ?? API_BASE, `/api/backtest?${params.toString()}`);
+      const result = await request<BacktestResult>(apiBase ?? API_BASE, `/backtest?${params.toString()}`);
       setBacktest(result);
     } catch (error) {
       setBacktestError(error instanceof Error ? error.message : 'Backtest failed');
@@ -139,7 +153,7 @@ export function useTradingBot(apiBase?: string, expectedSymbol = 'XRPUSDT') {
         executionInterval,
         top: String(top),
       });
-      const result = await request<BacktestSweepResult>(apiBase ?? API_BASE, `/api/backtest/sweep?${params.toString()}`);
+      const result = await request<BacktestSweepResult>(apiBase ?? API_BASE, `/backtest/sweep?${params.toString()}`);
       setSweep(result);
     } catch (error) {
       setSweepError(error instanceof Error ? error.message : 'Sweep failed');

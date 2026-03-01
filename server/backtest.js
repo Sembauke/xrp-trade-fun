@@ -1,6 +1,6 @@
 import {
   runStrategy,
-  defaultPortfolio,
+  createDefaultPortfolio,
   defaultStrategyConfig,
   TRADE_FEE,
 } from './strategy.js';
@@ -13,6 +13,7 @@ const INTERVAL_MS = {
   '4h': 14_400_000,
   '1d': 86_400_000,
 };
+const FETCH_TIMEOUT_MS = 5_000;
 
 const SWEEP_PRESETS = [
   {
@@ -94,7 +95,20 @@ async function fetchCandlesRange({ symbol, interval, startTime, endTime }) {
     url.searchParams.set('endTime', String(endTime));
     url.searchParams.set('limit', '1000');
 
-    const response = await fetch(url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    let response;
+    try {
+      response = await fetch(url, { signal: controller.signal });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Binance ${interval} timeout na ${FETCH_TIMEOUT_MS}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+
     if (!response.ok) {
       throw new Error(`Binance ${interval} HTTP ${response.status}`);
     }
@@ -169,10 +183,15 @@ async function fetchDataset({ symbol, days, executionInterval }) {
   };
 }
 
-function simulateBacktest(dataset, { strategyConfig = defaultStrategyConfig, variant = 'custom' } = {}) {
+function simulateBacktest(dataset, {
+  strategyConfig = defaultStrategyConfig,
+  variant = 'custom',
+  startingCapital = 10_000,
+} = {}) {
   const { execCandles, candles4h, candles1d, startTime, endTime, symbol, executionInterval, days } = dataset;
 
-  let portfolio = { ...defaultPortfolio };
+  const initialPortfolio = createDefaultPortfolio(startingCapital);
+  let portfolio = { ...initialPortfolio };
   const trades = [];
   const equityCurve = [];
   let h4Idx = 0;
@@ -206,6 +225,7 @@ function simulateBacktest(dataset, { strategyConfig = defaultStrategyConfig, var
       includeChartData: false,
       tradeTimeIso: new Date(pointTime).toISOString(),
       strategyConfig,
+      startingCapital,
     });
 
     portfolio = result.portfolio;
@@ -226,7 +246,7 @@ function simulateBacktest(dataset, { strategyConfig = defaultStrategyConfig, var
     }
   }
 
-  const startEquity = defaultPortfolio.startingValue;
+  const startEquity = initialPortfolio.startingValue;
   const endEquity = equityCurve[equityCurve.length - 1]?.equity ?? startEquity;
 
   const sells = trades.filter((t) => t.action === 'SELL');
@@ -267,18 +287,31 @@ function simulateBacktest(dataset, { strategyConfig = defaultStrategyConfig, var
   };
 }
 
-export async function runBacktest({ symbol = 'XRPUSDT', days = 365, executionInterval = '1h', strategyConfig } = {}) {
+export async function runBacktest({
+  symbol = 'XRPUSDT',
+  days = 365,
+  executionInterval = '1h',
+  strategyConfig,
+  startingCapital = 10_000,
+} = {}) {
   const dataset = await fetchDataset({ symbol, days, executionInterval });
-  return simulateBacktest(dataset, { strategyConfig, variant: 'single' });
+  return simulateBacktest(dataset, { strategyConfig, variant: 'single', startingCapital });
 }
 
-export async function runBacktestSweep({ symbol = 'XRPUSDT', days = 365, executionInterval = '1h', top = 5 } = {}) {
+export async function runBacktestSweep({
+  symbol = 'XRPUSDT',
+  days = 365,
+  executionInterval = '1h',
+  top = 5,
+  startingCapital = 10_000,
+} = {}) {
   const dataset = await fetchDataset({ symbol, days, executionInterval });
 
   const allResults = SWEEP_PRESETS.map((preset) => {
     const result = simulateBacktest(dataset, {
       strategyConfig: preset.strategyConfig,
       variant: preset.id,
+      startingCapital,
     });
 
     return {

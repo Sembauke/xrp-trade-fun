@@ -1,38 +1,23 @@
 services:
-  xrp-bot:
+  trade-bot:
     build: .
     # Matches what GitHub Actions pushes: ghcr.io/<owner>/<repo>:latest (lowercase)
     image: ghcr.io/sembauke/xrp-trade-fun:latest
     ports:
       - "${PORT:-8787}:8787"
     volumes:
-      # SQLite DB persists here on the host / NAS share
       - ./data:/app/data
+      - ./data-btc:/app/data-btc
     environment:
       - PORT=8787
+      - DB_PATH_XRP=/app/data/trading.db
+      - DB_PATH_BTC=/app/data-btc/trading-btc.db
+      - STARTING_CAPITAL_XRP=10000
+      - STARTING_CAPITAL_BTC=20000
     restart: unless-stopped
     # Friendly healthcheck — NAS container managers show this
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8787/api/health').then(r=>r.ok||process.exit(1)).catch(()=>process.exit(1))"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-
-  btc-bot:
-    image: ghcr.io/sembauke/xrp-trade-fun:latest
-    ports:
-      - "8788:8788"
-    volumes:
-      - ./data-btc:/app/data
-    environment:
-      - PORT=8788
-      - SYMBOL=BTCUSDT
-      - STARTING_CAPITAL=20000
-      - DB_PATH=/app/data/trading-btc.db
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:8788/api/health').then(r=>r.ok||process.exit(1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3

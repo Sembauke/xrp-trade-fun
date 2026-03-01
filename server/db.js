@@ -1,14 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { defaultPortfolio, defaultStrategyConfig } from './strategy.js';
+import { createDefaultPortfolio, defaultStrategyConfig } from './strategy.js';
 
-const DB_PATH = process.env.DB_PATH
-  ? path.resolve(process.cwd(), process.env.DB_PATH)
-  : path.resolve(process.cwd(), 'data', 'trading.db');
-
-function ensureDir() {
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+function ensureDir(dbPath) {
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 }
 
 function ensureColumn(db, table, column, sqlType) {
@@ -19,9 +15,12 @@ function ensureColumn(db, table, column, sqlType) {
   }
 }
 
-export function createDb() {
-  ensureDir();
-  const db = new Database(DB_PATH);
+export function createDb({ dbPath, startingCapital = 10_000 }) {
+  const resolvedDbPath = path.resolve(process.cwd(), dbPath);
+  const defaultPortfolio = createDefaultPortfolio(startingCapital);
+  ensureDir(resolvedDbPath);
+  const db = new Database(resolvedDbPath);
+  db.__startingCapital = startingCapital;
   db.pragma('journal_mode = WAL');
 
   db.exec(`
@@ -116,6 +115,8 @@ export function createDb() {
 }
 
 export function loadPortfolio(db) {
+  const fallbackStartingValue = db.__startingCapital ?? 10_000;
+  const defaultPortfolio = createDefaultPortfolio(fallbackStartingValue);
   const row = db.prepare('SELECT * FROM portfolio WHERE id = 1').get();
   if (!row) {
     return { ...defaultPortfolio };
@@ -249,6 +250,8 @@ export function setError(db, message) {
 }
 
 export function resetAll(db) {
+  const fallbackStartingValue = db.__startingCapital ?? 10_000;
+  const defaultPortfolio = createDefaultPortfolio(fallbackStartingValue);
   const nowIso = new Date().toISOString();
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM trades').run();
@@ -301,7 +304,9 @@ export function resetAll(db) {
   tx();
 }
 
-export function getState(db) {
+export function getState(db, symbol = 'XRPUSDT') {
+  const fallbackStartingValue = db.__startingCapital ?? 10_000;
+  const defaultPortfolio = createDefaultPortfolio(fallbackStartingValue);
   const portfolio = loadPortfolio(db);
   const bot = db.prepare('SELECT * FROM bot_state WHERE id = 1').get();
   const trades = db
@@ -350,7 +355,7 @@ export function getState(db) {
     totalValue: bot?.total_value ?? defaultPortfolio.startingValue,
     pnl: bot?.pnl ?? 0,
     pnlPct: bot?.pnl_pct ?? 0,
-    symbol: process.env.SYMBOL || 'XRPUSDT',
+    symbol,
     strategy: {
       variant: strategy.variant,
       autoOptimize: strategy.autoOptimize,

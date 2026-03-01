@@ -30,8 +30,8 @@ RUN apt-get purge -y python3 make g++ && apt-get autoremove -y
 COPY server/ ./server/
 COPY --from=frontend /build/dist ./dist/
 
-# SQLite database lives here — mount a volume to persist across restarts
-VOLUME ["/app/data"]
+# SQLite databases live here — mount volumes to persist across restarts
+VOLUME ["/app/data", "/app/data-btc"]
 
 ENV PORT=8787
 EXPOSE 8787

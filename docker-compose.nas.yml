@@ -10,13 +10,20 @@
 #   docker compose -f docker-compose.nas.yml up -d
 
 services:
-  xrp-bot:
+  trade-bot:
     # GitHub Actions sets the image name to ghcr.io/<owner>/<repo>:latest (all lowercase)
     image: ghcr.io/sembauke/xrp-trade-fun:latest
     ports:
       - "${PORT:-8787}:8787"
     volumes:
       - ./data:/app/data
+      - ./data-btc:/app/data-btc
+    environment:
+      - PORT=8787
+      - DB_PATH_XRP=/app/data/trading.db
+      - DB_PATH_BTC=/app/data-btc/trading-btc.db
+      - STARTING_CAPITAL_XRP=10000
+      - STARTING_CAPITAL_BTC=20000
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8787/api/health').then(r=>r.ok||process.exit(1)).catch(()=>process.exit(1))"]

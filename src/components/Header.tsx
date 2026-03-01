@@ -2,6 +2,7 @@ import { Activity, Pause, Play } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { WidgetHelp } from './WidgetHelp';
+import { APP_VERSION } from '../version';
 
 interface HeaderProps {
   currentPrice: number;
@@ -34,7 +35,12 @@ export function Header({
           )}
         </div>
         <div>
-          <h1 className="text-white font-bold text-lg leading-none tracking-tight">{symbol} Handelsbot</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-white font-bold text-lg leading-none tracking-tight">{symbol} Handelsbot</h1>
+            <span className="px-1.5 py-0.5 rounded border border-white/10 bg-surface-700/70 text-[10px] font-mono text-slate-400">
+              v{APP_VERSION}
+            </span>
+          </div>
           <p className="text-xs text-slate-500 mt-0.5">
             {lastUpdate
               ? `Bijgewerkt ${formatDistanceToNow(lastUpdate, { addSuffix: true, locale: nl })}`
