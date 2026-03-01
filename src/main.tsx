@@ -7,9 +7,12 @@ import { AssetPage } from './pages/AssetPage';
 import './index.css';
 
 function deriveApiBase(envValue: string | undefined, fallbackPort: number) {
-  if (envValue && envValue.trim() !== '') return envValue;
+  if (envValue && envValue.trim() !== '') return envValue.trim();
   const url = new URL(window.location.origin);
-  url.port = String(fallbackPort);
+  // In production (e.g. https on NAS) keep same host/port; in dev (localhost with Vite port) swap to API port.
+  if (url.port) {
+    url.port = String(fallbackPort);
+  }
   return url.origin;
 }
 
