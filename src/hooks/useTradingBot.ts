@@ -86,8 +86,13 @@ export function useTradingBot(apiBase?: string, expectedSymbol = 'XRPUSDT') {
   const [sweepLoading, setSweepLoading] = useState(false);
   const [sweepError, setSweepError] = useState<string | null>(null);
   const refreshingRef = useRef(false);
+  const retryTimerRef = useRef<number | null>(null);
 
   const loadState = useCallback(async () => {
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
     try {
       const next = await request<BotState>(apiBase ?? API_BASE, '/state');
       setState(next);
@@ -98,6 +103,10 @@ export function useTradingBot(apiBase?: string, expectedSymbol = 'XRPUSDT') {
         isLoading: false,
         error: `${message} · controleer of de ${apiBase ?? API_BASE} API draait`,
       }));
+      // Faster recovery when API briefly stalls, without waiting full poll interval.
+      retryTimerRef.current = window.setTimeout(() => {
+        void loadState();
+      }, 5_000);
     }
   }, [apiBase]);
 
@@ -120,7 +129,12 @@ export function useTradingBot(apiBase?: string, expectedSymbol = 'XRPUSDT') {
   useEffect(() => {
     loadState();
     const interval = setInterval(loadState, POLL_MS);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (retryTimerRef.current !== null) {
+        window.clearTimeout(retryTimerRef.current);
+      }
+    };
   }, [loadState]);
 
   const toggleRunning = useCallback(() => {
