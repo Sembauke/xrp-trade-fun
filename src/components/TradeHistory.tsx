@@ -1,7 +1,6 @@
 import { ArrowUpCircle, ArrowDownCircle, Clock } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Trade } from '../types';
-import { WidgetHelp } from './WidgetHelp';
 import { useEffect, useMemo, useState } from 'react';
 
 interface TradeHistoryProps {
@@ -38,11 +37,6 @@ export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT' }: Trade
         <h2 className="text-slate-400 text-xs font-semibold uppercase tracking-widest mb-4">
           Handelshistorie
         </h2>
-        <WidgetHelp title="Handelshistorie">
-          Elke regel is een uitgevoerde simulatie-order. Live P&L laat per order zien wat de actuele
-          winst of het verlies zou zijn bij de huidige prijs. Dit helpt om snel te zien welke instappen
-          goed of slecht uitpakken terwijl de markt beweegt.
-        </WidgetHelp>
         <div className="flex items-center justify-center py-12 text-slate-600 text-sm">
           Nog geen transacties - wachten op signalen…
         </div>
@@ -58,9 +52,6 @@ export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT' }: Trade
         </h2>
         <span className="text-slate-500 text-xs">{trades.length} totaal · Pagina {page}/{totalPages}</span>
       </div>
-      <WidgetHelp title="Handelshistorie">
-        {`Transacties worden automatisch uitgevoerd door het algoritme. Live P&L per regel wordt continu herberekend op basis van de huidige ${symbol.replace('USDT', '')}-prijs. Groen is positief, rood is negatief.`}
-      </WidgetHelp>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

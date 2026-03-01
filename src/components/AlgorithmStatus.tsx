@@ -1,6 +1,5 @@
 import { Brain, ArrowUpCircle, ArrowDownCircle, MinusCircle, Zap } from 'lucide-react';
 import { Decision } from '../types';
-import { WidgetHelp } from './WidgetHelp';
 
 interface AlgorithmStatusProps {
   decision: Decision | null;
@@ -57,11 +56,6 @@ export function AlgorithmStatus({ decision, symbol = 'XRPUSDT' }: AlgorithmStatu
         <Brain size={14} className="text-slate-400" />
         <h2 className="text-slate-400 text-xs font-semibold uppercase tracking-widest">Algoritme</h2>
       </div>
-      <WidgetHelp title="Algoritme-status">
-        Dit blok toont de actuele beslissing van de bot op basis van meerdere tijdframes en indicatoren.
-        De scorebalk vat alle signalen samen: hoe hoger positief, hoe sterker richting kopen; hoe lager
-        negatief, hoe sterker richting verkopen. De redenregel beschrijft waarom de actie is gekozen.
-      </WidgetHelp>
 
       {/* Decision badge */}
       <div className={`flex items-center gap-3 p-3 rounded-xl mb-4 border ${cfg.bg} ${cfg.border}`}>

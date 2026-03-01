@@ -14,17 +14,19 @@ const INTERVAL_MS = {
   '1d': 86_400_000,
 };
 const FETCH_TIMEOUT_MS = 5_000;
+const DATASET_CACHE_TTL_MS = 10 * 60_000;
+const datasetCache = new Map();
 
 const SWEEP_PRESETS = [
   {
     id: 'defensive',
     description: 'Lower allocation, stronger drawdown protection',
     strategyConfig: {
-      maxTradeAllocationStep: 0.12,
+      maxTradeAllocationStep: 0.18,
       targetAllocation: {
-        bull: { strong: 0.68, mild: 0.56, base: 0.42, riskOff: 0.22 },
-        bear: { strong: 0.16, base: 0.06, riskOff: 0.02 },
-        transition: { strong: 0.34, base: 0.22, riskOff: 0.08 },
+        bull: { strong: 0.76, mild: 0.64, base: 0.50, riskOff: 0.30 },
+        bear: { strong: 0.22, base: 0.10, riskOff: 0.05 },
+        transition: { strong: 0.42, base: 0.28, riskOff: 0.14 },
       },
       drawdownRules: { hardStopPct: 0.35, softStopPct: 0.20, softCapAllocation: 0.12 },
     },
@@ -183,6 +185,19 @@ async function fetchDataset({ symbol, days, executionInterval }) {
   };
 }
 
+async function fetchDatasetCached({ symbol, days, executionInterval }) {
+  const key = `${symbol}:${executionInterval}:${days}`;
+  const now = Date.now();
+  const cached = datasetCache.get(key);
+  if (cached && now - cached.createdAt < DATASET_CACHE_TTL_MS) {
+    return cached.payload;
+  }
+
+  const payload = await fetchDataset({ symbol, days, executionInterval });
+  datasetCache.set(key, { createdAt: now, payload });
+  return payload;
+}
+
 function simulateBacktest(dataset, {
   strategyConfig = defaultStrategyConfig,
   variant = 'custom',
@@ -259,6 +274,7 @@ function simulateBacktest(dataset, {
   const returnPct = startEquity > 0 ? ((endEquity - startEquity) / startEquity) * 100 : 0;
   const maxDrawdownPct = computeMaxDrawdownFromEquity(equityCurve) * 100;
   const winRatePct = sells.length > 0 ? (winningSells / sells.length) * 100 : 0;
+  const activityScore = Math.min(2, trades.length / 1500);
 
   return {
     symbol,
@@ -283,29 +299,29 @@ function simulateBacktest(dataset, {
       endPrice,
       returnPct: benchmarkReturnPct,
     },
-    objectiveScore: returnPct - maxDrawdownPct * 0.65 + winRatePct * 0.08,
+    objectiveScore: returnPct - maxDrawdownPct * 0.55 + winRatePct * 0.08 + activityScore,
   };
 }
 
 export async function runBacktest({
   symbol = 'XRPUSDT',
-  days = 365,
+  days = 180,
   executionInterval = '1h',
   strategyConfig,
   startingCapital = 10_000,
 } = {}) {
-  const dataset = await fetchDataset({ symbol, days, executionInterval });
+  const dataset = await fetchDatasetCached({ symbol, days, executionInterval });
   return simulateBacktest(dataset, { strategyConfig, variant: 'single', startingCapital });
 }
 
 export async function runBacktestSweep({
   symbol = 'XRPUSDT',
-  days = 365,
+  days = 180,
   executionInterval = '1h',
   top = 5,
   startingCapital = 10_000,
 } = {}) {
-  const dataset = await fetchDataset({ symbol, days, executionInterval });
+  const dataset = await fetchDatasetCached({ symbol, days, executionInterval });
 
   const allResults = SWEEP_PRESETS.map((preset) => {
     const result = simulateBacktest(dataset, {
@@ -331,7 +347,7 @@ export async function runBacktestSweep({
     days: dataset.days,
     start: new Date(dataset.startTime).toISOString(),
     end: new Date(dataset.endTime).toISOString(),
-    objective: 'score = returnPct - 0.65*maxDrawdownPct + 0.08*winRatePct',
+    objective: 'score = returnPct - 0.55*maxDrawdownPct + 0.08*winRatePct + min(2,tradeCount/1500)',
     variantsTested: SWEEP_PRESETS.length,
     top: ranked.slice(0, Math.max(1, Math.min(Number(top) || 5, ranked.length))),
     all: ranked,

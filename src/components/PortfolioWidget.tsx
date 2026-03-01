@@ -1,5 +1,4 @@
 import { Wallet, Coins, Landmark } from 'lucide-react';
-import { WidgetHelp } from './WidgetHelp';
 
 interface PortfolioWidgetProps {
   usd: number;
@@ -35,11 +34,8 @@ export function PortfolioWidget({
         <Wallet size={14} className="text-slate-400" />
         <h2 className="text-slate-400 text-xs font-semibold uppercase tracking-widest">Portefeuille-overzicht</h2>
       </div>
-      <WidgetHelp title="Portefeuille-overzicht">
-        {`Deze widget laat in een oogopslag je totale waarde, cash, ${assetLabel}-positie en allocatie zien. Je ziet ook direct de actuele ongerealiseerde winst of het verlies op de ${assetLabel}-positie op basis van de huidige marktprijs.`}
-      </WidgetHelp>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div className="bg-surface-700/40 rounded-xl p-3">
           <p className="text-slate-500 text-xs mb-1">Totale waarde</p>
           <p className="text-white font-mono font-semibold text-lg">${totalValue.toFixed(2)}</p>

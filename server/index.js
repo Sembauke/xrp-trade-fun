@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
+import { WebSocketServer } from 'ws';
 import {
   createDb,
   getState,
@@ -20,23 +21,11 @@ const PORT = Number(process.env.PORT || 8787);
 const POLL_MS = Number(process.env.POLL_MS || 60_000);
 const OPTIMIZE_MS = 6 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 5_000;
+const SYMBOL = process.env.SYMBOL || 'XRPUSDT';
+const DB_PATH = process.env.DB_PATH || process.env.DB_PATH_XRP || 'data/trading.db';
+const STARTING_CAPITAL = Number(process.env.STARTING_CAPITAL || process.env.STARTING_CAPITAL_XRP || 10_000);
 
-const ASSET_CONFIGS = {
-  xrp: {
-    id: 'xrp',
-    symbol: 'XRPUSDT',
-    dbPath: process.env.DB_PATH_XRP || 'data/trading.db',
-    startingCapital: Number(process.env.STARTING_CAPITAL_XRP || 10_000),
-  },
-  btc: {
-    id: 'btc',
-    symbol: 'BTCUSDT',
-    dbPath: process.env.DB_PATH_BTC || 'data/trading-btc.db',
-    startingCapital: Number(process.env.STARTING_CAPITAL_BTC || 20_000),
-  },
-};
-
-function createAssetService(config) {
+function createService(config) {
   const db = createDb({
     dbPath: config.dbPath,
     startingCapital: config.startingCapital,
@@ -143,7 +132,7 @@ function createAssetService(config) {
 
       const sweep = await runBacktestSweep({
         symbol: config.symbol,
-        days: 365,
+        days: 180,
         executionInterval: '1h',
         top: 1,
         startingCapital: config.startingCapital,
@@ -182,44 +171,72 @@ function createAssetService(config) {
   };
 }
 
-const services = Object.fromEntries(
-  Object.entries(ASSET_CONFIGS).map(([id, cfg]) => [id, createAssetService(cfg)]),
-);
+const service = createService({
+  symbol: SYMBOL,
+  dbPath: DB_PATH,
+  startingCapital: STARTING_CAPITAL,
+});
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-function resolveService(req, res) {
-  const service = services[req.params.asset];
-  if (!service) {
-    res.status(404).json({ error: `Unknown asset '${req.params.asset}'` });
-    return null;
-  }
-  return service;
+async function runBacktestForService(query = {}) {
+  const days = Number(query.days ?? 365);
+  const executionInterval = String(query.executionInterval ?? '1h');
+  const symbol = String(query.symbol ?? service.symbol);
+  const strategyState = service.loadStrategyState();
+  const cacheKey = `${symbol}:${executionInterval}:${days}:${strategyState.variant}:${strategyState.lastOptimized ?? 'none'}`;
+
+  const cached = service.cacheGet(cacheKey);
+  if (cached) return { ...cached, cached: true };
+
+  const payload = await runBacktest({
+    symbol,
+    executionInterval,
+    days,
+    strategyConfig: strategyState.strategyConfig,
+    startingCapital: service.startingCapital,
+  });
+  service.cacheSet(cacheKey, payload);
+  return { ...payload, cached: false };
+}
+
+async function runSweepForService(query = {}) {
+  const days = Number(query.days ?? 365);
+  const executionInterval = String(query.executionInterval ?? '1h');
+  const symbol = String(query.symbol ?? service.symbol);
+  const top = Number(query.top ?? 5);
+  const cacheKey = `sweep:${symbol}:${executionInterval}:${days}:${top}`;
+
+  const cached = service.cacheGet(cacheKey);
+  if (cached) return { ...cached, cached: true };
+
+  const payload = await runBacktestSweep({
+    symbol,
+    executionInterval,
+    days,
+    top,
+    startingCapital: service.startingCapital,
+  });
+  service.cacheSet(cacheKey, payload);
+  return { ...payload, cached: false };
 }
 
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     now: new Date().toISOString(),
-    assets: Object.values(services).map((service) => ({
-      id: service.id,
-      symbol: service.symbol,
-      running: service.getState().isRunning,
-    })),
+    symbol: service.symbol,
+    running: service.getState().isRunning,
   });
 });
 
-app.get('/api/:asset/state', (req, res) => {
-  const service = resolveService(req, res);
-  if (!service) return;
+app.get('/api/state', (req, res) => {
   res.json(service.getState());
 });
 
-app.post('/api/:asset/actions/refresh', async (req, res) => {
-  const service = resolveService(req, res);
-  if (!service) return;
+app.post('/api/actions/refresh', async (req, res) => {
   try {
     await service.runCycle();
     res.json(service.getState());
@@ -228,9 +245,7 @@ app.post('/api/:asset/actions/refresh', async (req, res) => {
   }
 });
 
-app.post('/api/:asset/actions/toggle', (req, res) => {
-  const service = resolveService(req, res);
-  if (!service) return;
+app.post('/api/actions/toggle', (req, res) => {
   const state = service.getState();
   const next = !state.isRunning;
   service.setBotRunning(next);
@@ -241,9 +256,7 @@ app.post('/api/:asset/actions/toggle', (req, res) => {
   res.json(service.getState());
 });
 
-app.post('/api/:asset/actions/restart', async (req, res) => {
-  const service = resolveService(req, res);
-  if (!service) return;
+app.post('/api/actions/restart', async (req, res) => {
   try {
     service.resetAll();
     await service.runCycle();
@@ -253,92 +266,47 @@ app.post('/api/:asset/actions/restart', async (req, res) => {
   }
 });
 
-app.get('/api/:asset/backtest', async (req, res) => {
-  const service = resolveService(req, res);
-  if (!service) return;
+app.get('/api/backtest', async (req, res) => {
   try {
-    const days = Number(req.query.days ?? 365);
-    const executionInterval = String(req.query.executionInterval ?? '1h');
-    const symbol = String(req.query.symbol ?? service.symbol);
-    const strategyState = service.loadStrategyState();
-    const cacheKey = `${symbol}:${executionInterval}:${days}:${strategyState.variant}:${strategyState.lastOptimized ?? 'none'}`;
-
-    const cached = service.cacheGet(cacheKey);
-    if (cached) {
-      res.json({ ...cached, cached: true });
-      return;
-    }
-
-    const payload = await runBacktest({
-      symbol,
-      executionInterval,
-      days,
-      strategyConfig: strategyState.strategyConfig,
-      startingCapital: service.startingCapital,
-    });
-    service.cacheSet(cacheKey, payload);
-
-    res.json({ ...payload, cached: false });
+    res.json(await runBacktestForService(req.query));
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : 'Backtest failed' });
   }
 });
 
-app.get('/api/:asset/backtest/sweep', async (req, res) => {
-  const service = resolveService(req, res);
-  if (!service) return;
+app.get('/api/backtest/sweep', async (req, res) => {
   try {
-    const days = Number(req.query.days ?? 365);
-    const executionInterval = String(req.query.executionInterval ?? '1h');
-    const symbol = String(req.query.symbol ?? service.symbol);
-    const top = Number(req.query.top ?? 5);
-    const cacheKey = `sweep:${symbol}:${executionInterval}:${days}:${top}`;
-
-    const cached = service.cacheGet(cacheKey);
-    if (cached) {
-      res.json({ ...cached, cached: true });
-      return;
-    }
-
-    const payload = await runBacktestSweep({
-      symbol,
-      executionInterval,
-      days,
-      top,
-      startingCapital: service.startingCapital,
-    });
-    service.cacheSet(cacheKey, payload);
-    res.json({ ...payload, cached: false });
+    res.json(await runSweepForService(req.query));
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : 'Sweep failed' });
   }
 });
 
-// Backward-compat aliases to XRP endpoints.
-app.get('/api/state', (req, res) => res.json(services.xrp.getState()));
-app.post('/api/actions/refresh', async (req, res) => {
+// Backward-compat aliases.
+app.get('/api/xrp/state', (req, res) => res.json(service.getState()));
+app.post('/api/xrp/actions/refresh', async (req, res) => {
   try {
-    await services.xrp.runCycle();
-    res.json(services.xrp.getState());
+    await service.runCycle();
+    res.json(service.getState());
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Refresh failed' });
   }
 });
-app.post('/api/actions/toggle', (req, res) => {
-  const state = services.xrp.getState();
+app.post('/api/xrp/actions/toggle', (req, res) => {
+  const state = service.getState();
   const next = !state.isRunning;
-  services.xrp.setBotRunning(next);
+  service.setBotRunning(next);
   if (next) {
-    void services.xrp.maybeOptimize(true);
-    void services.xrp.maybeRunCycle();
+    void service.maybeOptimize(true);
+    void service.maybeRunCycle();
   }
-  res.json(services.xrp.getState());
+  res.json(service.getState());
 });
-app.post('/api/actions/restart', async (req, res) => {
+app.post('/api/xrp/actions/restart', async (req, res) => {
   try {
-    services.xrp.resetAll();
-    await services.xrp.runCycle();
-    res.json(services.xrp.getState());
+    service.resetAll();
+    await service.runCycle();
+    res.json(service.getState());
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Restart failed' });
   }
@@ -356,27 +324,49 @@ app.use((req, res, next) => {
   res.sendFile(path.join(DIST, 'index.html'));
 });
 
-app.listen(PORT, async () => {
-  console.log(`Multi-asset bot API running on http://localhost:${PORT}`);
-  for (const service of Object.values(services)) {
-    try {
-      await service.maybeOptimize(true);
-      await service.runCycle();
-    } catch (error) {
-      console.error(`Initial cycle failed for ${service.symbol}:`, error);
-    }
+const httpServer = app.listen(PORT, async () => {
+  console.log(`Trading bot API running on http://localhost:${PORT} (${service.symbol})`);
+  try {
+    await service.maybeOptimize(true);
+    await service.runCycle();
+  } catch (error) {
+    console.error(`Initial cycle failed for ${service.symbol}:`, error);
   }
 
-  const allServices = Object.values(services);
-  allServices.forEach((service, idx) => {
-    const offset = idx * 12_000;
-    setTimeout(() => {
-      void service.maybeOptimize();
-      void service.maybeRunCycle();
-      setInterval(() => {
-        void service.maybeOptimize();
-        void service.maybeRunCycle();
-      }, POLL_MS);
-    }, offset);
+  setInterval(() => {
+    void service.maybeOptimize();
+    void service.maybeRunCycle();
+  }, POLL_MS);
+});
+
+const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+wss.on('connection', (ws) => {
+  ws.on('message', async (raw) => {
+    try {
+      const message = JSON.parse(String(raw));
+      if (message.type === 'backtest:run') {
+        const payload = await runBacktestForService(message.params ?? {});
+        ws.send(JSON.stringify({
+          type: 'backtest:result',
+          requestId: message.requestId ?? null,
+          payload,
+        }));
+        return;
+      }
+
+      if (message.type === 'sweep:run') {
+        const payload = await runSweepForService(message.params ?? {});
+        ws.send(JSON.stringify({
+          type: 'sweep:result',
+          requestId: message.requestId ?? null,
+          payload,
+        }));
+      }
+    } catch (error) {
+      ws.send(JSON.stringify({
+        type: 'error',
+        error: error instanceof Error ? error.message : 'Socket request failed',
+      }));
+    }
   });
 });

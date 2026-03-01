@@ -1,5 +1,4 @@
 import { Signal } from '../types';
-import { WidgetHelp } from './WidgetHelp';
 
 interface SignalsPanelProps {
   signals: Signal[];
@@ -93,11 +92,6 @@ export function SignalsPanel({ signals }: SignalsPanelProps) {
       <h2 className="text-slate-400 text-xs font-semibold uppercase tracking-widest mb-4">
         Indicator-signalen
       </h2>
-      <WidgetHelp title="Signalen">
-        Elk signaal geeft een deelbeoordeling van de markt. Positieve waarden ondersteunen kopen,
-        negatieve waarden ondersteunen verkopen. De balk per regel laat de richting en sterkte zien;
-        samen bepalen deze signalen de uiteindelijke actie van het algoritme.
-      </WidgetHelp>
       <div className="grid grid-cols-2 gap-3">
         {signals.map(s => (
           <SignalBar key={s.name} signal={s} />

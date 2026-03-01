@@ -11,21 +11,21 @@ export const STARTING_CAPITAL = Number.isFinite(envStart) && envStart > 0 ? envS
 export const TRADE_FEE = 0.001;
 
 export const defaultStrategyConfig = {
-  maxTradeAllocationStep: 0.18,
+  maxTradeAllocationStep: 0.22,
   minOrderUsd: 15,
   scoreThresholds: {
-    bullStrong: 5,
-    bullMild: 3,
-    bullRiskOff: -4,
-    bearStrong: 4,
-    bearRiskOff: -2,
-    transitionStrong: 4,
-    transitionRiskOff: -3,
+    bullStrong: 4,
+    bullMild: 2,
+    bullRiskOff: -5,
+    bearStrong: 3,
+    bearRiskOff: -4,
+    transitionStrong: 3,
+    transitionRiskOff: -4,
   },
   targetAllocation: {
-    bull: { strong: 0.82, mild: 0.70, base: 0.56, riskOff: 0.32 },
-    bear: { strong: 0.25, base: 0.10, riskOff: 0.04 },
-    transition: { strong: 0.48, base: 0.30, riskOff: 0.14 },
+    bull: { strong: 0.88, mild: 0.76, base: 0.62, riskOff: 0.36 },
+    bear: { strong: 0.32, base: 0.16, riskOff: 0.08 },
+    transition: { strong: 0.56, base: 0.36, riskOff: 0.18 },
   },
   drawdownRules: {
     hardStopPct: 0.40,

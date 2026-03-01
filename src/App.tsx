@@ -6,7 +6,6 @@ import { AlgorithmStatus } from './components/AlgorithmStatus';
 import { TradeHistory } from './components/TradeHistory';
 import { BacktestPanel } from './components/BacktestPanel';
 import { AlertTriangle } from 'lucide-react';
-import { WidgetHelp } from './components/WidgetHelp';
 import { PortfolioWidget } from './components/PortfolioWidget';
 
 export default function App({ apiBase, expectedSymbol }: { apiBase?: string; expectedSymbol?: string }) {
@@ -62,11 +61,6 @@ export default function App({ apiBase, expectedSymbol }: { apiBase?: string; exp
           <AlgorithmStatus decision={decision} symbol={symbol} />
             <div className="card flex flex-col justify-between gap-3">
               <h2 className="text-slate-400 text-xs font-semibold uppercase tracking-widest">Marktstatistieken</h2>
-              <WidgetHelp title="Marktstatistieken">
-                Dit overzicht toont kernindicatoren uit meerdere tijdframes: regime, RSI, trend-EMA's en
-                momentum. De target XRP en huidige XRP laten zien waar het algoritme de allocatie naartoe
-                wil sturen en waar de portefeuille nu daadwerkelijk staat.
-              </WidgetHelp>
               {indicators && (
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   {[
@@ -97,7 +91,7 @@ export default function App({ apiBase, expectedSymbol }: { apiBase?: string; exp
           />
 
           {/* Chart */}
-          <PriceChart data={chartData} currentPrice={currentPrice} symbol={symbol} />
+          <PriceChart data={chartData} currentPrice={currentPrice} />
 
           {/* Signals */}
           {decision && decision.signals.length > 0 && (

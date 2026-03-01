@@ -7,13 +7,10 @@ services:
       - "${PORT:-8787}:8787"
     volumes:
       - ./data:/app/data
-      - ./data-btc:/app/data-btc
     environment:
       - PORT=8787
-      - DB_PATH_XRP=/app/data/trading.db
-      - DB_PATH_BTC=/app/data-btc/trading-btc.db
-      - STARTING_CAPITAL_XRP=10000
-      - STARTING_CAPITAL_BTC=20000
+      - DB_PATH=/app/data/trading.db
+      - STARTING_CAPITAL=10000
     restart: unless-stopped
     # Friendly healthcheck — NAS container managers show this
     healthcheck:

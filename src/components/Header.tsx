@@ -1,7 +1,6 @@
 import { Activity, Pause, Play } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { nl } from 'date-fns/locale';
-import { WidgetHelp } from './WidgetHelp';
 import { APP_VERSION } from '../version';
 
 interface HeaderProps {
@@ -47,9 +46,6 @@ export function Header({
               : 'Initialiseren…'}
           </p>
         </div>
-        <WidgetHelp title="Kopbalk">
-          {`Hier zie je de live ${assetLabel}/USDT-koers, de procentuele verandering sinds de vorige update en de huidige status van de bot. Met Pauze stopt alle automatische activiteit (traden en optimaliseren). Met Hervatten gaat alles weer automatisch verder.`}
-        </WidgetHelp>
       </div>
 
       {/* Live Price */}

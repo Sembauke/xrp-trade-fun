@@ -1,6 +1,5 @@
 import { BarChart3 } from 'lucide-react';
 import { BacktestResult, BacktestSweepResult } from '../types';
-import { WidgetHelp } from './WidgetHelp';
 
 interface BacktestPanelProps {
   backtest: BacktestResult | null;
@@ -47,24 +46,17 @@ export function BacktestPanel({
           <h2 className="text-slate-400 text-xs font-semibold uppercase tracking-widest">Backtest</h2>
         </div>
         <div className="text-[11px] text-slate-500 text-right">
-          <p>Modus: automatische frontend-analyse</p>
           <p>Actief profiel: <span className="text-slate-300 font-semibold">{strategyVariant}</span></p>
           {lastOptimized && <p>Laatst geoptimaliseerd: {new Date(lastOptimized).toLocaleString()}</p>}
         </div>
       </div>
-      <WidgetHelp title="Backtest en optimalisatie">
-        Deze widget vergelijkt de prestaties van de strategie op historische data. Rendement laat
-        groei zien, maximale drawdown laat het grootste tussentijdse verlies zien, en win rate geeft
-        het percentage winstgevende afsluitingen. De sweep-ranking test meerdere varianten en sorteert
-        die op een samengestelde score voor rendement versus risico.
-      </WidgetHelp>
 
       {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
       {sweepError && <p className="text-xs text-red-400 mb-2">{sweepError}</p>}
       {(loading || sweepLoading) && <p className="text-xs text-slate-500 mb-2">Analyses worden geladen…</p>}
 
       {!backtest ? (
-        <p className="text-slate-500 text-xs">Analysegegevens worden automatisch uit live data berekend.</p>
+        <p className="text-slate-500 text-xs">Analysegegevens worden automatisch via socket opgehaald.</p>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
           {[
