@@ -25,6 +25,7 @@ const defaultState: BotState = {
   totalValue: 10_000,
   pnl: 0,
   pnlPct: 0,
+  symbol: 'XRPUSDT',
   strategy: {
     variant: 'balanced',
     autoOptimize: true,
@@ -32,8 +33,8 @@ const defaultState: BotState = {
   },
 };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+async function request<T>(base: string, path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${base}${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...init,
   });
@@ -54,7 +55,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function useTradingBot() {
+export function useTradingBot(apiBase?: string) {
   const [state, setState] = useState<BotState>(defaultState);
   const [backtest, setBacktest] = useState<BacktestResult | null>(null);
   const [backtestLoading, setBacktestLoading] = useState(false);
@@ -66,7 +67,7 @@ export function useTradingBot() {
 
   const loadState = useCallback(async () => {
     try {
-      const next = await request<BotState>('/api/state');
+      const next = await request<BotState>(apiBase ?? API_BASE, '/api/state');
       setState(next);
     } catch (error) {
       setState((prev) => ({
@@ -75,13 +76,13 @@ export function useTradingBot() {
         error: error instanceof Error ? error.message : 'Failed to load state',
       }));
     }
-  }, []);
+  }, [apiBase]);
 
   const runAction = useCallback(async (path: string) => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     try {
-      const next = await request<BotState>(path, { method: 'POST' });
+      const next = await request<BotState>(apiBase ?? API_BASE, path, { method: 'POST' });
       setState(next);
     } catch (error) {
       setState((prev) => ({
@@ -91,7 +92,7 @@ export function useTradingBot() {
     } finally {
       refreshingRef.current = false;
     }
-  }, []);
+  }, [apiBase]);
 
   useEffect(() => {
     loadState();
@@ -111,14 +112,14 @@ export function useTradingBot() {
         days: String(days),
         executionInterval,
       });
-      const result = await request<BacktestResult>(`/api/backtest?${params.toString()}`);
+      const result = await request<BacktestResult>(apiBase ?? API_BASE, `/api/backtest?${params.toString()}`);
       setBacktest(result);
     } catch (error) {
       setBacktestError(error instanceof Error ? error.message : 'Backtest failed');
     } finally {
       setBacktestLoading(false);
     }
-  }, []);
+  }, [apiBase]);
 
   const runSweep = useCallback(async (days = 365, executionInterval = '1h', top = 5) => {
     setSweepLoading(true);
@@ -129,14 +130,14 @@ export function useTradingBot() {
         executionInterval,
         top: String(top),
       });
-      const result = await request<BacktestSweepResult>(`/api/backtest/sweep?${params.toString()}`);
+      const result = await request<BacktestSweepResult>(apiBase ?? API_BASE, `/api/backtest/sweep?${params.toString()}`);
       setSweep(result);
     } catch (error) {
       setSweepError(error instanceof Error ? error.message : 'Sweep failed');
     } finally {
       setSweepLoading(false);
     }
-  }, []);
+  }, [apiBase]);
 
   useEffect(() => {
     if (!state.isRunning) return;

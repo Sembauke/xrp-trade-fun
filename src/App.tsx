@@ -9,7 +9,7 @@ import { AlertTriangle } from 'lucide-react';
 import { WidgetHelp } from './components/WidgetHelp';
 import { PortfolioWidget } from './components/PortfolioWidget';
 
-export default function App() {
+export default function App({ apiBase }: { apiBase?: string }) {
   const regimeNederlands = (regime: string) => {
     if (regime === 'BULL') return 'Bull';
     if (regime === 'BEAR') return 'Bear';
@@ -22,9 +22,9 @@ export default function App() {
     totalValue, pnl, pnlPct,
     backtest, backtestLoading, backtestError,
     sweep, sweepLoading, sweepError,
-    strategy,
+    strategy, symbol,
     toggleRunning,
-  } = useTradingBot();
+  } = useTradingBot(apiBase);
 
   return (
     <div className="min-h-screen bg-surface-950 flex flex-col">
@@ -34,6 +34,7 @@ export default function App() {
         previousPrice={previousPrice}
         lastUpdate={lastUpdate}
         isRunning={isRunning}
+        symbol={symbol}
         onToggle={toggleRunning}
       />
 

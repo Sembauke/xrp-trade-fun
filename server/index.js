@@ -17,6 +17,7 @@ import { runStrategy } from './strategy.js';
 import { runBacktest, runBacktestSweep } from './backtest.js';
 
 const PORT = Number(process.env.PORT || 8787);
+const SYMBOL = process.env.SYMBOL || 'XRPUSDT';
 const POLL_MS = 30_000;
 const OPTIMIZE_MS = 6 * 60 * 60 * 1000;
 
@@ -39,7 +40,7 @@ function cacheSet(key, payload) {
 }
 
 async function fetchCandles(interval, limit) {
-  const url = `https://api.binance.com/api/v3/klines?symbol=XRPUSDT&interval=${interval}&limit=${limit}`;
+  const url = `https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${interval}&limit=${limit}`;
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Binance ${interval} HTTP ${response.status}`);

@@ -6,7 +6,8 @@ import {
   computeMaxDrawdown,
 } from './indicators.js';
 
-export const STARTING_CAPITAL = 10_000;
+const envStart = parseFloat(process.env.STARTING_CAPITAL ?? '');
+export const STARTING_CAPITAL = Number.isFinite(envStart) && envStart > 0 ? envStart : 10_000;
 export const TRADE_FEE = 0.001;
 
 export const defaultStrategyConfig = {

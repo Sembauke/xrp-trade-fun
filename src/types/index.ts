@@ -95,6 +95,7 @@ export interface BotState {
   totalValue: number;
   pnl: number;
   pnlPct: number;
+  symbol?: string;
   strategy: {
     variant: string;
     autoOptimize: boolean;

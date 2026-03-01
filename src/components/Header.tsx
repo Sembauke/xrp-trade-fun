@@ -8,11 +8,12 @@ interface HeaderProps {
   previousPrice: number;
   lastUpdate: Date | null;
   isRunning: boolean;
+  symbol?: string;
   onToggle: () => void;
 }
 
 export function Header({
-  currentPrice, previousPrice, lastUpdate, isRunning, onToggle,
+  currentPrice, previousPrice, lastUpdate, isRunning, onToggle, symbol = 'XRPUSDT',
 }: HeaderProps) {
   const priceUp = currentPrice >= previousPrice;
   const priceDelta = previousPrice > 0
@@ -32,7 +33,7 @@ export function Header({
           )}
         </div>
         <div>
-          <h1 className="text-white font-bold text-lg leading-none tracking-tight">XRP Handelsbot</h1>
+          <h1 className="text-white font-bold text-lg leading-none tracking-tight">{symbol} Handelsbot</h1>
           <p className="text-xs text-slate-500 mt-0.5">
             {lastUpdate
               ? `Bijgewerkt ${formatDistanceToNow(lastUpdate, { addSuffix: true, locale: nl })}`
@@ -48,7 +49,7 @@ export function Header({
 
       {/* Live Price */}
       <div className="flex flex-col items-center">
-        <span className="text-slate-400 text-xs mb-0.5 uppercase tracking-widest">XRP / USDT</span>
+        <span className="text-slate-400 text-xs mb-0.5 uppercase tracking-widest">{symbol.replace('USDT','')} / USDT</span>
         <div className="flex items-baseline gap-2">
           <span className="text-2xl font-bold text-white font-mono">
             ${currentPrice.toFixed(4)}

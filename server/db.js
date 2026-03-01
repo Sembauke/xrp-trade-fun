@@ -3,7 +3,9 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { defaultPortfolio, defaultStrategyConfig } from './strategy.js';
 
-const DB_PATH = path.resolve(process.cwd(), 'data', 'trading.db');
+const DB_PATH = process.env.DB_PATH
+  ? path.resolve(process.cwd(), process.env.DB_PATH)
+  : path.resolve(process.cwd(), 'data', 'trading.db');
 
 function ensureDir() {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -348,6 +350,7 @@ export function getState(db) {
     totalValue: bot?.total_value ?? defaultPortfolio.startingValue,
     pnl: bot?.pnl ?? 0,
     pnlPct: bot?.pnl_pct ?? 0,
+    symbol: process.env.SYMBOL || 'XRPUSDT',
     strategy: {
       variant: strategy.variant,
       autoOptimize: strategy.autoOptimize,
