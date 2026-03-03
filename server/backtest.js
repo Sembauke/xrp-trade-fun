@@ -4,16 +4,8 @@ import {
   defaultStrategyConfig,
   TRADE_FEE,
 } from './strategy.js';
+import { createMarketDataClient, INTERVAL_MS } from './market-data.js';
 
-const INTERVAL_MS = {
-  '1m': 60_000,
-  '5m': 300_000,
-  '15m': 900_000,
-  '1h': 3_600_000,
-  '4h': 14_400_000,
-  '1d': 86_400_000,
-};
-const FETCH_TIMEOUT_MS = 5_000;
 const DATASET_CACHE_TTL_MS = 10 * 60_000;
 const datasetCache = new Map();
 
@@ -82,64 +74,6 @@ function intervalToLabel(interval) {
   return '1D';
 }
 
-async function fetchCandlesRange({ symbol, interval, startTime, endTime }) {
-  const stepMs = INTERVAL_MS[interval];
-  if (!stepMs) throw new Error(`Unsupported interval: ${interval}`);
-
-  let cursor = startTime;
-  const out = [];
-
-  while (cursor < endTime) {
-    const url = new URL('https://api.binance.com/api/v3/klines');
-    url.searchParams.set('symbol', symbol);
-    url.searchParams.set('interval', interval);
-    url.searchParams.set('startTime', String(cursor));
-    url.searchParams.set('endTime', String(endTime));
-    url.searchParams.set('limit', '1000');
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    let response;
-    try {
-      response = await fetch(url, { signal: controller.signal });
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error(`Binance ${interval} timeout na ${FETCH_TIMEOUT_MS}ms`);
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    if (!response.ok) {
-      throw new Error(`Binance ${interval} HTTP ${response.status}`);
-    }
-
-    const rows = await response.json();
-    if (!rows.length) break;
-
-    for (const row of rows) {
-      out.push({
-        time: Number(row[0]),
-        open: Number(row[1]),
-        high: Number(row[2]),
-        low: Number(row[3]),
-        close: Number(row[4]),
-        volume: Number(row[5]),
-      });
-    }
-
-    const lastTime = Number(rows[rows.length - 1][0]);
-    const nextCursor = lastTime + stepMs;
-    if (nextCursor <= cursor) break;
-    cursor = nextCursor;
-
-    if (rows.length < 1000) break;
-  }
-
-  return out;
-}
-
 function computeMaxDrawdownFromEquity(equityCurve) {
   if (!equityCurve.length) return 0;
   let peak = equityCurve[0].equity;
@@ -162,11 +96,12 @@ async function fetchDataset({ symbol, days, executionInterval }) {
   const dayMs = 86_400_000;
   const startTime = now - boundedDays * dayMs;
   const warmupStart = startTime - 260 * dayMs;
+  const marketData = createMarketDataClient({ symbol });
 
   const [execCandles, candles4h, candles1d] = await Promise.all([
-    fetchCandlesRange({ symbol, interval: executionInterval, startTime: warmupStart, endTime: now }),
-    fetchCandlesRange({ symbol, interval: '4h', startTime: warmupStart, endTime: now }),
-    fetchCandlesRange({ symbol, interval: '1d', startTime: warmupStart, endTime: now }),
+    marketData.fetchCandlesRange({ interval: executionInterval, startTime: warmupStart, endTime: now }),
+    marketData.fetchCandlesRange({ interval: '4h', startTime: warmupStart, endTime: now }),
+    marketData.fetchCandlesRange({ interval: '1d', startTime: warmupStart, endTime: now }),
   ]);
 
   if (execCandles.length < 260 || candles4h.length < 220 || candles1d.length < 220) {

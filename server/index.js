@@ -16,12 +16,14 @@ import {
 } from './db.js';
 import { runStrategy } from './strategy.js';
 import { runBacktest, runBacktestSweep } from './backtest.js';
+import { createMarketDataClient } from './market-data.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const POLL_MS = Number(process.env.POLL_MS || 60_000);
 const OPTIMIZE_MS = 6 * 60 * 60 * 1000;
-const FETCH_TIMEOUT_MS = 5_000;
+const FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 8_000);
 const SYMBOL = process.env.SYMBOL || 'XRPUSDT';
+const MARKET_DATA_PROVIDERS = process.env.MARKET_DATA_PROVIDERS || 'bybit,binance_vision,binance';
 const DB_PATH = process.env.DB_PATH || process.env.DB_PATH_XRP || 'data/trading.db';
 const STARTING_CAPITAL = Number(process.env.STARTING_CAPITAL || process.env.STARTING_CAPITAL_XRP || 10_000);
 
@@ -33,6 +35,11 @@ function createService(config) {
   const backtestCache = new Map();
   let cycleRunning = false;
   let optimizeRunning = false;
+  const marketData = createMarketDataClient({
+    symbol: config.symbol,
+    timeoutMs: FETCH_TIMEOUT_MS,
+    providers: MARKET_DATA_PROVIDERS,
+  });
 
   function cacheGet(key, ttlMs = 5 * 60_000) {
     const cached = backtestCache.get(key);
@@ -45,43 +52,12 @@ function createService(config) {
     backtestCache.set(key, { createdAt: Date.now(), payload });
   }
 
-  async function fetchCandles(interval, limit) {
-    const url = `https://api.binance.com/api/v3/klines?symbol=${config.symbol}&interval=${interval}&limit=${limit}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    let response;
-    try {
-      response = await fetch(url, { signal: controller.signal });
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error(`${config.symbol} Binance ${interval} timeout na ${FETCH_TIMEOUT_MS}ms`);
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    if (!response.ok) {
-      throw new Error(`${config.symbol} Binance ${interval} HTTP ${response.status}`);
-    }
-
-    const rows = await response.json();
-    return rows.map((k) => ({
-      time: Number(k[0]),
-      open: Number(k[1]),
-      high: Number(k[2]),
-      low: Number(k[3]),
-      close: Number(k[4]),
-      volume: Number(k[5]),
-    }));
-  }
-
   async function runCycle() {
     try {
       const [candles1m, candles4h, candles1d] = await Promise.all([
-        fetchCandles('1m', 220),
-        fetchCandles('4h', 220),
-        fetchCandles('1d', 220),
+        marketData.fetchLatestCandles('1m', 220),
+        marketData.fetchLatestCandles('4h', 220),
+        marketData.fetchLatestCandles('1d', 220),
       ]);
 
       const portfolio = loadPortfolio(db);
@@ -168,6 +144,7 @@ function createService(config) {
     resetAll: () => resetAll(db),
     loadStrategyState: () => loadStrategyState(db),
     startingCapital: config.startingCapital,
+    marketDataProviders: marketData.providers,
   };
 }
 
@@ -228,6 +205,7 @@ app.get('/api/health', (req, res) => {
     ok: true,
     now: new Date().toISOString(),
     symbol: service.symbol,
+    marketDataProviders: service.marketDataProviders,
     running: service.getState().isRunning,
   });
 });
@@ -325,7 +303,7 @@ app.use((req, res, next) => {
 });
 
 const httpServer = app.listen(PORT, async () => {
-  console.log(`Trading bot API running on http://localhost:${PORT} (${service.symbol})`);
+  console.log(`Trading bot API running on http://localhost:${PORT} (${service.symbol}) providers=${service.marketDataProviders.join(',')}`);
   try {
     await service.maybeOptimize(true);
     await service.runCycle();
