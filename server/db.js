@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { createDefaultPortfolio, defaultStrategyConfig, DEFAULT_STRATEGY_VARIANT } from './strategy.js';
+import { createDefaultPortfolio, defaultStrategyConfig, DEFAULT_STRATEGY_VARIANT } from './gemini-strategy.js';
 
 function ensureDir(dbPath) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -111,6 +111,29 @@ export function createDb({ dbPath, startingCapital = 10_000 }) {
     variant: DEFAULT_STRATEGY_VARIANT,
     config_json: JSON.stringify(defaultStrategyConfig),
   });
+
+  const strategyRow = db.prepare('SELECT variant, config_json FROM strategy_state WHERE id = 1').get();
+  let parsedConfig = null;
+  try {
+    parsedConfig = strategyRow?.config_json ? JSON.parse(strategyRow.config_json) : null;
+  } catch {
+    parsedConfig = null;
+  }
+
+  const isGeminiConfig = parsedConfig && parsedConfig.provider === 'gemini';
+  if (!strategyRow || strategyRow.variant !== DEFAULT_STRATEGY_VARIANT || !isGeminiConfig) {
+    db.prepare(`
+      UPDATE strategy_state
+      SET variant = @variant,
+          config_json = @config_json,
+          auto_optimize = 0,
+          last_optimized = NULL
+      WHERE id = 1
+    `).run({
+      variant: DEFAULT_STRATEGY_VARIANT,
+      config_json: JSON.stringify(defaultStrategyConfig),
+    });
+  }
 
   return db;
 }
@@ -230,9 +253,51 @@ export function loadStrategyState(db) {
     };
   }
 
+  let parsedConfig = defaultStrategyConfig;
+  try {
+    parsedConfig = row.config_json ? JSON.parse(row.config_json) : defaultStrategyConfig;
+  } catch {
+    parsedConfig = defaultStrategyConfig;
+  }
+
+  const envOverrides = {};
+  if (process.env.GEMINI_MODEL) {
+    envOverrides.model = process.env.GEMINI_MODEL;
+  }
+  if (process.env.GEMINI_DECISION_INTERVAL_MINUTES) {
+    const minutes = Number(process.env.GEMINI_DECISION_INTERVAL_MINUTES);
+    if (Number.isFinite(minutes) && minutes > 0) {
+      envOverrides.decisionIntervalMinutes = minutes;
+    }
+  }
+  if (process.env.GEMINI_MIN_ORDER_USD) {
+    const minOrderUsd = Number(process.env.GEMINI_MIN_ORDER_USD);
+    if (Number.isFinite(minOrderUsd) && minOrderUsd > 0) {
+      envOverrides.minOrderUsd = minOrderUsd;
+    }
+  }
+  if (process.env.GEMINI_MAX_TRADE_STEP_PCT) {
+    const maxStepPct = Number(process.env.GEMINI_MAX_TRADE_STEP_PCT);
+    if (Number.isFinite(maxStepPct) && maxStepPct > 0) {
+      envOverrides.maxTradeAllocationStepPct = maxStepPct;
+    }
+  }
+  if (process.env.GEMINI_MIN_TARGET_PCT) {
+    const minTargetPct = Number(process.env.GEMINI_MIN_TARGET_PCT);
+    if (Number.isFinite(minTargetPct)) {
+      envOverrides.minTargetAllocationPct = minTargetPct;
+    }
+  }
+  if (process.env.GEMINI_MAX_TARGET_PCT) {
+    const maxTargetPct = Number(process.env.GEMINI_MAX_TARGET_PCT);
+    if (Number.isFinite(maxTargetPct)) {
+      envOverrides.maxTargetAllocationPct = maxTargetPct;
+    }
+  }
+
   return {
     variant: row.variant,
-    strategyConfig: row.config_json ? JSON.parse(row.config_json) : defaultStrategyConfig,
+    strategyConfig: { ...parsedConfig, ...envOverrides },
     autoOptimize: Boolean(row.auto_optimize),
     lastOptimized: row.last_optimized ?? null,
   };

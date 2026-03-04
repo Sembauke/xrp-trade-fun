@@ -5,7 +5,6 @@ import { PriceChart } from './components/PriceChart';
 import { SignalsPanel } from './components/SignalsPanel';
 import { AlgorithmStatus } from './components/AlgorithmStatus';
 import { TradeHistory } from './components/TradeHistory';
-import { BacktestPanel } from './components/BacktestPanel';
 import { AlertTriangle } from 'lucide-react';
 import { PortfolioWidget } from './components/PortfolioWidget';
 
@@ -21,10 +20,7 @@ export default function App({ apiBase, expectedSymbol }: { apiBase?: string; exp
   const {
     currentPrice, previousPrice, portfolio, trades, decision,
     indicators, chartData, isLoading, isRunning, error, lastUpdate,
-    totalValue, pnl, pnlPct,
-    backtest, backtestLoading, backtestError,
-    sweep, sweepLoading, sweepError,
-    strategy, symbol,
+    totalValue, symbol,
     toggleRunning,
   } = useTradingBot(apiBase, expectedSymbol);
 
@@ -113,18 +109,6 @@ export default function App({ apiBase, expectedSymbol }: { apiBase?: string; exp
             <SignalsPanel signals={decision.signals} />
           )}
 
-          {showAdvanced && (
-            <BacktestPanel
-              backtest={backtest}
-              loading={backtestLoading}
-              error={backtestError}
-              sweep={sweep}
-              sweepLoading={sweepLoading}
-              sweepError={sweepError}
-              strategyVariant={strategy.variant}
-              lastOptimized={strategy.lastOptimized}
-            />
-          )}
           {/* Trade History */}
           <TradeHistory trades={trades} currentPrice={currentPrice} symbol={symbol} compact={!showAdvanced} />
 

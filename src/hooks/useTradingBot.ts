@@ -5,6 +5,7 @@ const POLL_MS = 30_000;
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? `${window.location.origin}/api`;
 const REQUEST_TIMEOUT_MS = 5_000;
 const STATE_TIMEOUT_MS = 20_000;
+const BACKTEST_DISABLED_MESSAGE = 'Backtest is uitgeschakeld: Gemini beslist live op ingestelde interval.';
 
 function buildDefaultState(symbol = 'XRPUSDT'): BotState {
   return {
@@ -30,7 +31,7 @@ function buildDefaultState(symbol = 'XRPUSDT'): BotState {
     pnlPct: 0,
     symbol,
     strategy: {
-      variant: 'active-quality',
+      variant: 'gemini-10m',
       autoOptimize: false,
       lastOptimized: null,
     },
@@ -82,22 +83,12 @@ export function useTradingBot(apiBase?: string, expectedSymbol = 'XRPUSDT') {
   const [state, setState] = useState<BotState>(() => buildDefaultState(expectedSymbol));
   const [backtest, setBacktest] = useState<BacktestResult | null>(null);
   const [backtestLoading, setBacktestLoading] = useState(false);
-  const [backtestError, setBacktestError] = useState<string | null>(null);
+  const [backtestError, setBacktestError] = useState<string | null>(BACKTEST_DISABLED_MESSAGE);
   const [sweep, setSweep] = useState<BacktestSweepResult | null>(null);
   const [sweepLoading, setSweepLoading] = useState(false);
-  const [sweepError, setSweepError] = useState<string | null>(null);
+  const [sweepError, setSweepError] = useState<string | null>(BACKTEST_DISABLED_MESSAGE);
   const refreshingRef = useRef(false);
   const retryTimerRef = useRef<number | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const wsReconnectRef = useRef<number | null>(null);
-  const wsConnectedRef = useRef(false);
-  const strategyVariantRef = useRef('active-quality');
-
-  const wsUrl = (() => {
-    const httpUrl = new URL(apiBase ?? API_BASE, window.location.origin);
-    const wsProtocol = httpUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${wsProtocol}//${httpUrl.host}/ws`;
-  })();
 
   const loadState = useCallback(async () => {
     if (retryTimerRef.current !== null) {
@@ -114,7 +105,6 @@ export function useTradingBot(apiBase?: string, expectedSymbol = 'XRPUSDT') {
         isLoading: false,
         error: `${message} · controleer of de ${apiBase ?? API_BASE} API draait`,
       }));
-      // Faster recovery when API briefly stalls, without waiting full poll interval.
       retryTimerRef.current = window.setTimeout(() => {
         void loadState();
       }, 5_000);
@@ -153,93 +143,13 @@ export function useTradingBot(apiBase?: string, expectedSymbol = 'XRPUSDT') {
   }, [runAction]);
 
   const runSweep = useCallback(() => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      setSweepError('Socket niet verbonden');
-      return;
-    }
-    setSweepLoading(true);
-    setBacktestLoading(true);
-    wsRef.current.send(JSON.stringify({
-      type: 'sweep:run',
-      requestId: `sw-${Date.now()}`,
-      params: { days: 90, executionInterval: '4h', top: 3 },
-    }));
+    setBacktest(null);
+    setSweep(null);
+    setBacktestLoading(false);
+    setSweepLoading(false);
+    setBacktestError(BACKTEST_DISABLED_MESSAGE);
+    setSweepError(BACKTEST_DISABLED_MESSAGE);
   }, []);
-
-  useEffect(() => {
-    strategyVariantRef.current = state.strategy.variant;
-  }, [state.strategy.variant]);
-
-  useEffect(() => {
-    const connect = () => {
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        wsConnectedRef.current = true;
-        setBacktestError(null);
-        setSweepError(null);
-        runSweep();
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(String(event.data));
-          if (message.type === 'sweep:result') {
-            const payload = message.payload as BacktestSweepResult;
-            setSweep(payload);
-            const selected =
-              payload.all.find((row) => row.variant === strategyVariantRef.current)
-              ?? payload.top[0]
-              ?? null;
-            setBacktest(selected as BacktestResult | null);
-            setSweepLoading(false);
-            setBacktestLoading(false);
-            setSweepError(null);
-            setBacktestError(null);
-            return;
-          }
-          if (message.type === 'error') {
-            setBacktestLoading(false);
-            setSweepLoading(false);
-            const msg = String(message.error ?? 'Socket error');
-            setBacktestError(msg);
-            setSweepError(msg);
-          }
-        } catch {
-          // ignore malformed socket messages
-        }
-      };
-
-      ws.onclose = () => {
-        wsConnectedRef.current = false;
-        wsRef.current = null;
-        if (wsReconnectRef.current !== null) {
-          window.clearTimeout(wsReconnectRef.current);
-        }
-        wsReconnectRef.current = window.setTimeout(connect, 3_000);
-      };
-    };
-
-    connect();
-    return () => {
-      if (wsReconnectRef.current !== null) {
-        window.clearTimeout(wsReconnectRef.current);
-      }
-      wsConnectedRef.current = false;
-      wsRef.current?.close();
-      wsRef.current = null;
-    };
-  }, [runSweep, wsUrl]);
-
-  useEffect(() => {
-    if (!state.isRunning) return;
-    const interval = window.setInterval(() => {
-      if (!wsConnectedRef.current) return;
-      runSweep();
-    }, 30 * 60 * 1000);
-    return () => window.clearInterval(interval);
-  }, [state.isRunning, runSweep]);
 
   return {
     ...state,

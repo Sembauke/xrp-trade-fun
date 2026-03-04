@@ -11,6 +11,10 @@ services:
       - PORT=8787
       - DB_PATH=/app/data/trading.db
       - STARTING_CAPITAL=10000
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemma-3n-e2b-it}
+      - POLL_MS=${POLL_MS:-300000}
+      - GEMINI_DECISION_INTERVAL_MINUTES=${GEMINI_DECISION_INTERVAL_MINUTES:-5}
     restart: unless-stopped
     # Friendly healthcheck — NAS container managers show this
     healthcheck:

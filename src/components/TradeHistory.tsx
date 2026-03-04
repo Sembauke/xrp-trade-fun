@@ -65,7 +65,7 @@ export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT', compact
               {!compact && <th className="pb-2 text-right font-medium">Hoeveelheid</th>}
               {!compact && <th className="pb-2 text-right font-medium">Portfolio</th>}
               {!compact && <th className="pb-2 text-right font-medium">Gerealiseerd W/V</th>}
-              <th className="pb-2 text-right font-medium">Live W/V</th>
+              <th className="pb-2 text-right font-medium">Open W/V</th>
               {!compact && <th className="pb-2 text-left font-medium pl-4">Reden</th>}
             </tr>
           </thead>
@@ -74,9 +74,9 @@ export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT', compact
               const isBuy = trade.action === 'BUY';
               const livePnl = isBuy
                 ? (currentPrice - trade.price) * trade.amount
-                : (trade.price - currentPrice) * trade.amount;
+                : null;
               const livePnlPct = trade.usdValue > 0
-                ? (livePnl / trade.usdValue) * 100
+                ? ((livePnl ?? 0) / trade.usdValue) * 100
                 : 0;
               const hasRealized = trade.action === 'SELL' && typeof trade.realizedPnl === 'number';
               return (
@@ -128,12 +128,18 @@ export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT', compact
                     </td>
                   )}
                   <td className={`py-2.5 text-right font-mono text-xs ${
-                    livePnl >= 0 ? 'text-emerald-400' : 'text-red-400'
+                    livePnl === null
+                      ? 'text-slate-500'
+                      : livePnl >= 0 ? 'text-emerald-400' : 'text-red-400'
                   }`}>
-                    {livePnl >= 0 ? '+' : ''}{livePnl.toFixed(2)}
-                    <span className="text-slate-500 ml-1">
-                      ({livePnl >= 0 ? '+' : ''}{livePnlPct.toFixed(2)}%)
-                    </span>
+                    {livePnl === null ? 'gesloten' : (
+                      <>
+                        {livePnl >= 0 ? '+' : ''}{livePnl.toFixed(2)}
+                        <span className="text-slate-500 ml-1">
+                          ({livePnl >= 0 ? '+' : ''}{livePnlPct.toFixed(2)}%)
+                        </span>
+                      </>
+                    )}
                   </td>
                   {!compact && (
                     <td className="py-2.5 pl-4 text-slate-500 text-xs max-w-[180px] truncate">
