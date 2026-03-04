@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { createDefaultPortfolio, defaultStrategyConfig } from './strategy.js';
+import { createDefaultPortfolio, defaultStrategyConfig, DEFAULT_STRATEGY_VARIANT } from './strategy.js';
 
 function ensureDir(dbPath) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -105,9 +105,10 @@ export function createDb({ dbPath, startingCapital = 10_000 }) {
 
   db.prepare(`
     INSERT INTO strategy_state (id, variant, config_json, auto_optimize, last_optimized)
-    VALUES (1, 'balanced', @config_json, 1, NULL)
+    VALUES (1, @variant, @config_json, 0, NULL)
     ON CONFLICT(id) DO NOTHING
   `).run({
+    variant: DEFAULT_STRATEGY_VARIANT,
     config_json: JSON.stringify(defaultStrategyConfig),
   });
 
@@ -127,6 +128,22 @@ export function loadPortfolio(db) {
     xrp: row.xrp,
     startingValue: row.starting_value,
     avgCostBasis: row.avg_cost_basis,
+  };
+}
+
+export function loadLatestTrade(db) {
+  const row = db.prepare('SELECT * FROM trades ORDER BY time DESC LIMIT 1').get();
+  if (!row) return null;
+  return {
+    id: row.id,
+    time: row.time,
+    action: row.action,
+    price: row.price,
+    amount: row.amount,
+    usdValue: row.usd_value,
+    reason: row.reason,
+    totalAfter: row.total_after,
+    realizedPnl: row.realized_pnl,
   };
 }
 
@@ -206,9 +223,9 @@ export function loadStrategyState(db) {
   const row = db.prepare('SELECT * FROM strategy_state WHERE id = 1').get();
   if (!row) {
     return {
-      variant: 'balanced',
+      variant: DEFAULT_STRATEGY_VARIANT,
       strategyConfig: defaultStrategyConfig,
-      autoOptimize: true,
+      autoOptimize: false,
       lastOptimized: null,
     };
   }
@@ -291,12 +308,13 @@ export function resetAll(db) {
 
     db.prepare(`
       UPDATE strategy_state
-      SET variant = 'balanced',
+      SET variant = @variant,
           config_json = @config_json,
-          auto_optimize = 1,
+          auto_optimize = 0,
           last_optimized = NULL
       WHERE id = 1
     `).run({
+      variant: DEFAULT_STRATEGY_VARIANT,
       config_json: JSON.stringify(defaultStrategyConfig),
     });
   });

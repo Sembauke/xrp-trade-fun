@@ -4,7 +4,7 @@ import { BacktestResult, BacktestSweepResult, BotState } from '../types';
 const POLL_MS = 30_000;
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? `${window.location.origin}/api`;
 const REQUEST_TIMEOUT_MS = 5_000;
-const STATE_TIMEOUT_MS = 12_000;
+const STATE_TIMEOUT_MS = 20_000;
 
 function buildDefaultState(symbol = 'XRPUSDT'): BotState {
   return {
@@ -30,8 +30,8 @@ function buildDefaultState(symbol = 'XRPUSDT'): BotState {
     pnlPct: 0,
     symbol,
     strategy: {
-      variant: 'balanced',
-      autoOptimize: true,
+      variant: 'active-quality',
+      autoOptimize: false,
       lastOptimized: null,
     },
   };
@@ -91,7 +91,7 @@ export function useTradingBot(apiBase?: string, expectedSymbol = 'XRPUSDT') {
   const wsRef = useRef<WebSocket | null>(null);
   const wsReconnectRef = useRef<number | null>(null);
   const wsConnectedRef = useRef(false);
-  const strategyVariantRef = useRef('balanced');
+  const strategyVariantRef = useRef('active-quality');
 
   const wsUrl = (() => {
     const httpUrl = new URL(apiBase ?? API_BASE, window.location.origin);
@@ -162,7 +162,7 @@ export function useTradingBot(apiBase?: string, expectedSymbol = 'XRPUSDT') {
     wsRef.current.send(JSON.stringify({
       type: 'sweep:run',
       requestId: `sw-${Date.now()}`,
-      params: { days: 180, executionInterval: '1h', top: 5 },
+      params: { days: 90, executionInterval: '4h', top: 3 },
     }));
   }, []);
 

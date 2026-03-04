@@ -7,6 +7,7 @@ interface TradeHistoryProps {
   trades: Trade[];
   currentPrice: number;
   symbol?: string;
+  compact?: boolean;
 }
 
 function translateReason(reason: string) {
@@ -17,7 +18,7 @@ function translateReason(reason: string) {
     .replace('score', 'score');
 }
 
-export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT' }: TradeHistoryProps) {
+export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT', compact = false }: TradeHistoryProps) {
   const pageSize = 10;
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(trades.length / pageSize));
@@ -48,7 +49,7 @@ export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT' }: Trade
     <div className="card">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-slate-400 text-xs font-semibold uppercase tracking-widest">
-          Handelshistorie
+          Handelshistorie {compact ? '(compact)' : ''}
         </h2>
         <span className="text-slate-500 text-xs">{trades.length} totaal · Pagina {page}/{totalPages}</span>
       </div>
@@ -60,12 +61,12 @@ export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT' }: Trade
               <th className="pb-2 text-left font-medium">Type</th>
               <th className="pb-2 text-left font-medium">Tijd</th>
               <th className="pb-2 text-right font-medium">Prijs</th>
-              <th className="pb-2 text-right font-medium">Hoeveelheid</th>
               <th className="pb-2 text-right font-medium">Waarde</th>
-              <th className="pb-2 text-right font-medium">Portfolio</th>
-              <th className="pb-2 text-right font-medium">Gerealiseerd W/V</th>
+              {!compact && <th className="pb-2 text-right font-medium">Hoeveelheid</th>}
+              {!compact && <th className="pb-2 text-right font-medium">Portfolio</th>}
+              {!compact && <th className="pb-2 text-right font-medium">Gerealiseerd W/V</th>}
               <th className="pb-2 text-right font-medium">Live W/V</th>
-              <th className="pb-2 text-left font-medium pl-4">Reden</th>
+              {!compact && <th className="pb-2 text-left font-medium pl-4">Reden</th>}
             </tr>
           </thead>
           <tbody>
@@ -103,23 +104,29 @@ export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT' }: Trade
                     ${trade.price.toFixed(4)}
                   </td>
                   <td className="py-2.5 text-right font-mono text-white text-xs">
-                    {trade.amount.toFixed(2)} <span className="text-slate-500">{symbol.replace('USDT', '')}</span>
-                  </td>
-                  <td className="py-2.5 text-right font-mono text-slate-300 text-xs">
                     ${trade.usdValue.toFixed(2)}
                   </td>
-                  <td className="py-2.5 text-right font-mono text-slate-300 text-xs">
-                    ${trade.totalAfter.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                  </td>
-                  <td className={`py-2.5 text-right font-mono text-xs ${
-                    hasRealized
-                      ? (trade.realizedPnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'
-                      : 'text-slate-500'
-                  }`}>
-                    {hasRealized
-                      ? `${(trade.realizedPnl ?? 0) >= 0 ? '+' : ''}${(trade.realizedPnl ?? 0).toFixed(2)}`
-                      : '-'}
-                  </td>
+                  {!compact && (
+                    <td className="py-2.5 text-right font-mono text-white text-xs">
+                      {trade.amount.toFixed(2)} <span className="text-slate-500">{symbol.replace('USDT', '')}</span>
+                    </td>
+                  )}
+                  {!compact && (
+                    <td className="py-2.5 text-right font-mono text-slate-300 text-xs">
+                      ${trade.totalAfter.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    </td>
+                  )}
+                  {!compact && (
+                    <td className={`py-2.5 text-right font-mono text-xs ${
+                      hasRealized
+                        ? (trade.realizedPnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'
+                        : 'text-slate-500'
+                    }`}>
+                      {hasRealized
+                        ? `${(trade.realizedPnl ?? 0) >= 0 ? '+' : ''}${(trade.realizedPnl ?? 0).toFixed(2)}`
+                        : '-'}
+                    </td>
+                  )}
                   <td className={`py-2.5 text-right font-mono text-xs ${
                     livePnl >= 0 ? 'text-emerald-400' : 'text-red-400'
                   }`}>
@@ -128,9 +135,11 @@ export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT' }: Trade
                       ({livePnl >= 0 ? '+' : ''}{livePnlPct.toFixed(2)}%)
                     </span>
                   </td>
-                  <td className="py-2.5 pl-4 text-slate-500 text-xs max-w-[180px] truncate">
-                    {translateReason(trade.reason)}
-                  </td>
+                  {!compact && (
+                    <td className="py-2.5 pl-4 text-slate-500 text-xs max-w-[180px] truncate">
+                      {translateReason(trade.reason)}
+                    </td>
+                  )}
                 </tr>
               );
             })}

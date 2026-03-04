@@ -17,6 +17,7 @@ function variantNaam(variant: string) {
   if (variant === 'balanced') return 'Gebalanceerd';
   if (variant === 'aggressive') return 'Agressief';
   if (variant === 'trend-max') return 'Trend-max';
+  if (variant === 'active-quality') return 'Actief-kwaliteit';
   return variant;
 }
 
@@ -25,7 +26,8 @@ function vertaalOmschrijving(omschrijving: string) {
     .replace('Lower allocation, stronger drawdown protection', 'Lagere allocatie, sterkere drawdown-bescherming')
     .replace('Baseline strategy profile', 'Basisprofiel van de strategie')
     .replace('Higher bull allocation and faster rebalancing', 'Hogere bull-allocatie en snellere herbalancering')
-    .replace('Stronger trend bias with later risk-off trigger', 'Sterkere trendfocus met latere risk-off trigger');
+    .replace('Stronger trend bias with later risk-off trigger', 'Sterkere trendfocus met latere risk-off trigger')
+    .replace('Active profile with directional score guards', 'Actief profiel met directionele score-filters');
 }
 
 export function BacktestPanel({

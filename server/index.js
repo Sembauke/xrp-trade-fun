@@ -7,6 +7,7 @@ import {
   createDb,
   getState,
   loadPortfolio,
+  loadLatestTrade,
   loadStrategyState,
   saveCycle,
   saveStrategyState,
@@ -15,8 +16,8 @@ import {
   resetAll,
 } from './db.js';
 import { runStrategy } from './strategy.js';
-import { runBacktest, runBacktestSweep } from './backtest.js';
 import { createMarketDataClient } from './market-data.js';
+import { BacktestWorkerClient } from './backtest-worker-client.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const POLL_MS = Number(process.env.POLL_MS || 60_000);
@@ -27,7 +28,7 @@ const MARKET_DATA_PROVIDERS = process.env.MARKET_DATA_PROVIDERS || 'bybit,binanc
 const DB_PATH = process.env.DB_PATH || process.env.DB_PATH_XRP || 'data/trading.db';
 const STARTING_CAPITAL = Number(process.env.STARTING_CAPITAL || process.env.STARTING_CAPITAL_XRP || 10_000);
 
-function createService(config) {
+function createService(config, deps) {
   const db = createDb({
     dbPath: config.dbPath,
     startingCapital: config.startingCapital,
@@ -61,12 +62,14 @@ function createService(config) {
       ]);
 
       const portfolio = loadPortfolio(db);
+      const lastTrade = loadLatestTrade(db);
       const strategyState = loadStrategyState(db);
       const output = runStrategy({
         candles1m,
         candles4h,
         candles1d,
         portfolio,
+        lastTrade,
         strategyConfig: strategyState.strategyConfig,
         symbol: config.symbol,
         startingCapital: config.startingCapital,
@@ -106,10 +109,10 @@ function createService(config) {
         : 0;
       if (!force && Date.now() - lastOptimizedMs < OPTIMIZE_MS) return;
 
-      const sweep = await runBacktestSweep({
+      const sweep = await deps.runSweep({
         symbol: config.symbol,
-        days: 180,
-        executionInterval: '1h',
+        days: 90,
+        executionInterval: '4h',
         top: 1,
         startingCapital: config.startingCapital,
       });
@@ -148,10 +151,13 @@ function createService(config) {
   };
 }
 
+const backtestWorker = new BacktestWorkerClient();
 const service = createService({
   symbol: SYMBOL,
   dbPath: DB_PATH,
   startingCapital: STARTING_CAPITAL,
+}, {
+  runSweep: (params) => backtestWorker.runSweep(params),
 });
 
 const app = express();
@@ -160,7 +166,7 @@ app.use(express.json());
 
 async function runBacktestForService(query = {}) {
   const days = Number(query.days ?? 365);
-  const executionInterval = String(query.executionInterval ?? '1h');
+  const executionInterval = String(query.executionInterval ?? '4h');
   const symbol = String(query.symbol ?? service.symbol);
   const strategyState = service.loadStrategyState();
   const cacheKey = `${symbol}:${executionInterval}:${days}:${strategyState.variant}:${strategyState.lastOptimized ?? 'none'}`;
@@ -168,7 +174,7 @@ async function runBacktestForService(query = {}) {
   const cached = service.cacheGet(cacheKey);
   if (cached) return { ...cached, cached: true };
 
-  const payload = await runBacktest({
+  const payload = await backtestWorker.runBacktest({
     symbol,
     executionInterval,
     days,
@@ -181,7 +187,7 @@ async function runBacktestForService(query = {}) {
 
 async function runSweepForService(query = {}) {
   const days = Number(query.days ?? 365);
-  const executionInterval = String(query.executionInterval ?? '1h');
+  const executionInterval = String(query.executionInterval ?? '4h');
   const symbol = String(query.symbol ?? service.symbol);
   const top = Number(query.top ?? 5);
   const cacheKey = `sweep:${symbol}:${executionInterval}:${days}:${top}`;
@@ -189,7 +195,7 @@ async function runSweepForService(query = {}) {
   const cached = service.cacheGet(cacheKey);
   if (cached) return { ...cached, cached: true };
 
-  const payload = await runBacktestSweep({
+  const payload = await backtestWorker.runSweep({
     symbol,
     executionInterval,
     days,
@@ -347,4 +353,28 @@ wss.on('connection', (ws) => {
       }));
     }
   });
+});
+
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Shutting down (${signal})...`);
+
+  try {
+    await backtestWorker.terminate();
+  } catch (error) {
+    console.error('Failed to terminate backtest worker:', error);
+  }
+
+  wss.close();
+  httpServer.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 3_000).unref();
+}
+
+process.once('SIGINT', () => {
+  void shutdown('SIGINT');
+});
+process.once('SIGTERM', () => {
+  void shutdown('SIGTERM');
 });

@@ -2,6 +2,8 @@ import {
   runStrategy,
   createDefaultPortfolio,
   defaultStrategyConfig,
+  balancedStrategyConfig,
+  activeQualityStrategyConfig,
   TRADE_FEE,
 } from './strategy.js';
 import { createMarketDataClient, INTERVAL_MS } from './market-data.js';
@@ -26,7 +28,7 @@ const SWEEP_PRESETS = [
   {
     id: 'balanced',
     description: 'Baseline strategy profile',
-    strategyConfig: { ...defaultStrategyConfig },
+    strategyConfig: { ...balancedStrategyConfig },
   },
   {
     id: 'aggressive',
@@ -63,6 +65,11 @@ const SWEEP_PRESETS = [
       drawdownRules: { hardStopPct: 0.42, softStopPct: 0.28, softCapAllocation: 0.22 },
     },
   },
+  {
+    id: 'active-quality',
+    description: 'Active profile with directional score guards',
+    strategyConfig: { ...activeQualityStrategyConfig },
+  },
 ];
 
 function intervalToLabel(interval) {
@@ -84,6 +91,44 @@ function computeMaxDrawdownFromEquity(equityCurve) {
     maxDd = Math.max(maxDd, dd);
   }
   return maxDd;
+}
+
+function average(values) {
+  if (!values.length) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function standardDeviation(values) {
+  if (values.length < 2) return 0;
+  const mean = average(values);
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+  return Math.sqrt(Math.max(variance, 0));
+}
+
+function buildRobustnessWindows(days) {
+  const base = Math.max(30, Math.min(730, Number(days) || 180));
+  const candidates = [
+    base,
+    Math.round(base * 0.67),
+    Math.round(base * 0.45),
+  ];
+
+  const out = [];
+  for (const candidate of candidates) {
+    const bounded = Math.max(30, Math.min(base, candidate));
+    if (!out.includes(bounded)) out.push(bounded);
+  }
+  return out.sort((a, b) => b - a);
+}
+
+function createWindowedDataset(dataset, days) {
+  const boundedDays = Math.max(30, Math.min(dataset.days, Number(days) || dataset.days));
+  if (boundedDays >= dataset.days) return dataset;
+  return {
+    ...dataset,
+    days: boundedDays,
+    startTime: dataset.endTime - boundedDays * 86_400_000,
+  };
 }
 
 async function fetchDataset({ symbol, days, executionInterval }) {
@@ -166,11 +211,13 @@ function simulateBacktest(dataset, {
     }
 
     const portfolioBefore = { ...portfolio };
+    const lastTrade = trades[trades.length - 1] ?? null;
     const result = runStrategy({
       candles1m: execSlice,
       candles4h: h4Slice,
       candles1d: d1Slice,
       portfolio,
+      lastTrade,
       executionLabel: intervalToLabel(executionInterval),
       includeChartData: false,
       tradeTimeIso: new Date(pointTime).toISOString(),
@@ -209,7 +256,20 @@ function simulateBacktest(dataset, {
   const returnPct = startEquity > 0 ? ((endEquity - startEquity) / startEquity) * 100 : 0;
   const maxDrawdownPct = computeMaxDrawdownFromEquity(equityCurve) * 100;
   const winRatePct = sells.length > 0 ? (winningSells / sells.length) * 100 : 0;
-  const activityScore = Math.min(2, trades.length / 1500);
+  const intervalActivityBase = executionInterval === '1m'
+    ? 360
+    : executionInterval === '5m'
+      ? 220
+      : executionInterval === '15m'
+        ? 140
+        : executionInterval === '1h'
+          ? 70
+          : executionInterval === '4h'
+            ? 35
+            : 20;
+  const targetTrades = Math.max(25, Math.round((days / 180) * intervalActivityBase));
+  const activityScore = Math.min(8, (trades.length / Math.max(targetTrades, 1)) * 4);
+  const lowWinPenalty = winRatePct < 38 ? (38 - winRatePct) * 0.4 : 0;
 
   return {
     symbol,
@@ -234,14 +294,14 @@ function simulateBacktest(dataset, {
       endPrice,
       returnPct: benchmarkReturnPct,
     },
-    objectiveScore: returnPct - maxDrawdownPct * 0.55 + winRatePct * 0.08 + activityScore,
+    objectiveScore: returnPct - maxDrawdownPct * 0.62 + winRatePct * 0.10 + activityScore - lowWinPenalty,
   };
 }
 
 export async function runBacktest({
   symbol = 'XRPUSDT',
   days = 180,
-  executionInterval = '1h',
+  executionInterval = '4h',
   strategyConfig,
   startingCapital = 10_000,
 } = {}) {
@@ -252,21 +312,50 @@ export async function runBacktest({
 export async function runBacktestSweep({
   symbol = 'XRPUSDT',
   days = 180,
-  executionInterval = '1h',
+  executionInterval = '4h',
   top = 5,
   startingCapital = 10_000,
 } = {}) {
   const dataset = await fetchDatasetCached({ symbol, days, executionInterval });
+  const windows = buildRobustnessWindows(dataset.days);
+  const windowDatasets = windows.map((windowDays) => createWindowedDataset(dataset, windowDays));
 
   const allResults = SWEEP_PRESETS.map((preset) => {
-    const result = simulateBacktest(dataset, {
-      strategyConfig: preset.strategyConfig,
-      variant: preset.id,
-      startingCapital,
-    });
+    const windowResults = windowDatasets.map((windowDataset) => (
+      simulateBacktest(windowDataset, {
+        strategyConfig: preset.strategyConfig,
+        variant: preset.id,
+        startingCapital,
+      })
+    ));
+    const primary = windowResults[0];
+    const windowScores = windowResults.map((row) => row.objectiveScore);
+    const windowReturns = windowResults.map((row) => row.returnPct);
+    const meanWindowScore = average(windowScores);
+    const scoreStdDev = standardDeviation(windowScores);
+    const worstWindowReturnPct = Math.min(...windowReturns);
+
+    // Blend point-in-time quality (primary) with consistency across windows.
+    const robustnessScore = meanWindowScore - scoreStdDev * 0.7;
+    const worstReturnPenalty = Math.max(0, -worstWindowReturnPct) * 0.08;
+    const combinedObjective = primary.objectiveScore * 0.65 + robustnessScore * 0.35 - worstReturnPenalty;
 
     return {
-      ...result,
+      ...primary,
+      objectiveScore: combinedObjective,
+      robustness: {
+        windows,
+        meanWindowScore,
+        scoreStdDev,
+        worstWindowReturnPct,
+        breakdown: windows.map((windowDays, index) => ({
+          days: windowDays,
+          returnPct: windowResults[index].returnPct,
+          maxDrawdownPct: windowResults[index].maxDrawdownPct,
+          tradeCount: windowResults[index].tradeCount,
+          objectiveScore: windowResults[index].objectiveScore,
+        })),
+      },
       description: preset.description,
       strategyConfig: preset.strategyConfig,
     };
@@ -282,8 +371,9 @@ export async function runBacktestSweep({
     days: dataset.days,
     start: new Date(dataset.startTime).toISOString(),
     end: new Date(dataset.endTime).toISOString(),
-    objective: 'score = returnPct - 0.55*maxDrawdownPct + 0.08*winRatePct + min(2,tradeCount/1500)',
+    objective: 'score = 0.65*primaryScore + 0.35*(meanWindowScore - 0.7*scoreStdDev) - 0.08*max(0,-worstWindowReturnPct)',
     variantsTested: SWEEP_PRESETS.length,
+    robustWindows: windows,
     top: ranked.slice(0, Math.max(1, Math.min(Number(top) || 5, ranked.length))),
     all: ranked,
   };

@@ -10,9 +10,21 @@ const envStart = parseFloat(process.env.STARTING_CAPITAL ?? '');
 export const STARTING_CAPITAL = Number.isFinite(envStart) && envStart > 0 ? envStart : 10_000;
 export const TRADE_FEE = 0.001;
 
-export const defaultStrategyConfig = {
-  maxTradeAllocationStep: 0.22,
+export const DEFAULT_STRATEGY_VARIANT = 'active-quality';
+
+export const balancedStrategyConfig = {
+  maxTradeAllocationStep: 0.26,
   minOrderUsd: 15,
+  minOrderPct: 0.0025,
+  minRebalanceDeltaPct: 0.009,
+  flipCooldownMinutes: 8,
+  minFlipMovePct: 0.002,
+  forceExitScore: -7,
+  maxTolerableLossSellPct: 0.0025,
+  directionalGuards: {
+    buyMinScore: { bull: -1, transition: 0, bear: 1 },
+    sellMaxScore: { bull: -1, transition: 0, bear: 2 },
+  },
   scoreThresholds: {
     bullStrong: 4,
     bullMild: 2,
@@ -33,6 +45,42 @@ export const defaultStrategyConfig = {
     softCapAllocation: 0.20,
   },
 };
+
+export const activeQualityStrategyConfig = {
+  maxTradeAllocationStep: 0.30,
+  minOrderUsd: 12,
+  minOrderPct: 0.0020,
+  minRebalanceDeltaPct: 0.006,
+  flipCooldownMinutes: 6,
+  minFlipMovePct: 0.0015,
+  forceExitScore: -7,
+  maxTolerableLossSellPct: 0.002,
+  directionalGuards: {
+    buyMinScore: { bull: -1, transition: 0, bear: 1 },
+    sellMaxScore: { bull: -1, transition: 0, bear: 2 },
+  },
+  scoreThresholds: {
+    bullStrong: 4,
+    bullMild: 2,
+    bullRiskOff: -5,
+    bearStrong: 3,
+    bearRiskOff: -4,
+    transitionStrong: 3,
+    transitionRiskOff: -4,
+  },
+  targetAllocation: {
+    bull: { strong: 0.96, mild: 0.84, base: 0.68, riskOff: 0.34 },
+    bear: { strong: 0.40, base: 0.18, riskOff: 0.06 },
+    transition: { strong: 0.64, base: 0.40, riskOff: 0.16 },
+  },
+  drawdownRules: {
+    hardStopPct: 0.40,
+    softStopPct: 0.24,
+    softCapAllocation: 0.20,
+  },
+};
+
+export const defaultStrategyConfig = { ...activeQualityStrategyConfig };
 
 export function createDefaultPortfolio(startingCapital = STARTING_CAPITAL) {
   return {
@@ -135,6 +183,16 @@ function mergeStrategyConfig(overrides = {}) {
       ...defaultStrategyConfig.drawdownRules,
       ...(overrides.drawdownRules ?? {}),
     },
+    directionalGuards: {
+      buyMinScore: {
+        ...defaultStrategyConfig.directionalGuards.buyMinScore,
+        ...(overrides.directionalGuards?.buyMinScore ?? {}),
+      },
+      sellMaxScore: {
+        ...defaultStrategyConfig.directionalGuards.sellMaxScore,
+        ...(overrides.directionalGuards?.sellMaxScore ?? {}),
+      },
+    },
   };
 }
 
@@ -192,6 +250,7 @@ export function runStrategy({
   executionLabel = '1M',
   includeChartData = true,
   tradeTimeIso,
+  lastTrade = null,
   strategyConfig: strategyConfigInput,
   symbol = 'XRPUSDT',
   startingCapital = portfolio?.startingValue ?? STARTING_CAPITAL,
@@ -265,53 +324,134 @@ export function runStrategy({
   const maxStep = strategyConfig.maxTradeAllocationStep * stepFactor;
 
   const rawDelta = target - currentAllocation;
-  const delta = Math.max(-maxStep, Math.min(maxStep, rawDelta));
+  const deltaPreBand = Math.max(-maxStep, Math.min(maxStep, rawDelta));
+  const minRebalanceDeltaPct = Math.max(0, Number(strategyConfig.minRebalanceDeltaPct) || 0);
+  const delta = Math.abs(rawDelta) < minRebalanceDeltaPct ? 0 : deltaPreBand;
 
   const desiredUsdShift = delta * totalValueBefore;
-  const minOrderUsd = strategyConfig.minOrderUsd;
+  const minOrderUsd = Math.max(
+    Number(strategyConfig.minOrderUsd) || 0,
+    totalValueBefore * Math.max(0, Number(strategyConfig.minOrderPct) || 0),
+  );
 
+  const basePortfolio = { ...portfolio };
   let nextPortfolio = { ...portfolio };
   let trade = null;
   let action = 'HOLD';
   let amount = 0;
   let realizedPnl = null;
+  let guardReason = null;
+
+  const nowMs = tradeTimeIso ? new Date(tradeTimeIso).getTime() : Date.now();
+  const lastTradePrice = Number(lastTrade?.price);
+  const lastTradeTimeMs = lastTrade?.time ? new Date(lastTrade.time).getTime() : NaN;
+  const flipCooldownMs = Math.max(0, Number(strategyConfig.flipCooldownMinutes) || 0) * 60_000;
+  const minFlipMovePct = Math.max(0, Number(strategyConfig.minFlipMovePct) || 0);
+  const forceExitScore = Number(strategyConfig.forceExitScore);
+  const forceExit = Number.isFinite(forceExitScore) ? totalScore <= forceExitScore : false;
+  const maxTolerableLossSellPct = Math.max(0, Number(strategyConfig.maxTolerableLossSellPct) || 0);
+  const regimeKey = regime.toLowerCase();
+  const minBuyScore = Number(strategyConfig.directionalGuards?.buyMinScore?.[regimeKey]);
+  const maxSellScore = Number(strategyConfig.directionalGuards?.sellMaxScore?.[regimeKey]);
+
+  function shouldBlockFlip(nextAction) {
+    if (!lastTrade || !lastTrade.action || lastTrade.action === nextAction) return null;
+
+    if (Number.isFinite(lastTradeTimeMs) && Number.isFinite(nowMs) && nowMs > lastTradeTimeMs) {
+      const elapsedMs = nowMs - lastTradeTimeMs;
+      if (elapsedMs < flipCooldownMs) {
+        return `cooldown actief (${Math.ceil((flipCooldownMs - elapsedMs) / 60_000)}m resterend)`;
+      }
+    }
+
+    if (Number.isFinite(lastTradePrice) && lastTradePrice > 0) {
+      const movePct = Math.abs(price - lastTradePrice) / lastTradePrice;
+      if (movePct < minFlipMovePct) {
+        return `prijsbeweging te klein sinds laatste trade (${(movePct * 100).toFixed(2)}%)`;
+      }
+    }
+
+    return null;
+  }
+
+  function shouldBlockByDirectionalScore(nextAction) {
+    if (nextAction === 'BUY' && Number.isFinite(minBuyScore) && totalScore < minBuyScore) {
+      return `score te laag voor BUY in ${regime} (${totalScore.toFixed(1)} < ${minBuyScore.toFixed(1)})`;
+    }
+    if (nextAction === 'SELL' && Number.isFinite(maxSellScore) && totalScore > maxSellScore) {
+      return `score te hoog voor SELL in ${regime} (${totalScore.toFixed(1)} > ${maxSellScore.toFixed(1)})`;
+    }
+    return null;
+  }
 
   if (desiredUsdShift > minOrderUsd && nextPortfolio.usd > minOrderUsd) {
-    const spend = Math.min(desiredUsdShift, nextPortfolio.usd * 0.95);
-    const fee = spend * TRADE_FEE;
-    const buyValue = spend - fee;
-    amount = buyValue / price;
+    const blocked = shouldBlockByDirectionalScore('BUY') ?? shouldBlockFlip('BUY');
+    if (blocked) {
+      guardReason = blocked;
+    } else {
+      const spend = Math.min(desiredUsdShift, nextPortfolio.usd * 0.95);
+      const fee = spend * TRADE_FEE;
+      const buyValue = spend - fee;
+      amount = buyValue / price;
 
-    const totalXrpAfter = nextPortfolio.xrp + amount;
-    // Cost basis should include buy fees; "spend" is gross cash outflow.
-    const avgCostBasis =
-      totalXrpAfter > 0
-        ? (nextPortfolio.xrp * nextPortfolio.avgCostBasis + spend) / totalXrpAfter
-        : price;
+      const totalXrpAfter = nextPortfolio.xrp + amount;
+      // Cost basis should include buy fees; "spend" is gross cash outflow.
+      const avgCostBasis =
+        totalXrpAfter > 0
+          ? (nextPortfolio.xrp * nextPortfolio.avgCostBasis + spend) / totalXrpAfter
+          : price;
 
-    nextPortfolio = {
-      ...nextPortfolio,
-      usd: nextPortfolio.usd - spend,
-      xrp: totalXrpAfter,
-      avgCostBasis,
-    };
+      nextPortfolio = {
+        ...nextPortfolio,
+        usd: nextPortfolio.usd - spend,
+        xrp: totalXrpAfter,
+        avgCostBasis,
+      };
 
-    action = 'BUY';
+      action = 'BUY';
+    }
   } else if (desiredUsdShift < -minOrderUsd && nextPortfolio.xrp * price > minOrderUsd) {
-    const sellValue = Math.min(Math.abs(desiredUsdShift), nextPortfolio.xrp * price);
-    amount = sellValue / price;
-    const fee = sellValue * TRADE_FEE;
-    realizedPnl = (price - nextPortfolio.avgCostBasis) * amount - fee;
+    const blocked = shouldBlockByDirectionalScore('SELL') ?? shouldBlockFlip('SELL');
+    if (blocked) {
+      guardReason = blocked;
+    } else {
+      const sellValue = Math.min(Math.abs(desiredUsdShift), nextPortfolio.xrp * price);
+      amount = sellValue / price;
+      const fee = sellValue * TRADE_FEE;
+      realizedPnl = (price - nextPortfolio.avgCostBasis) * amount - fee;
 
-    const remainingXrp = Math.max(0, nextPortfolio.xrp - amount);
-    nextPortfolio = {
-      ...nextPortfolio,
-      usd: nextPortfolio.usd + sellValue - fee,
-      xrp: remainingXrp,
-      avgCostBasis: remainingXrp === 0 ? 0 : nextPortfolio.avgCostBasis,
-    };
+      const remainingXrp = Math.max(0, nextPortfolio.xrp - amount);
+      nextPortfolio = {
+        ...nextPortfolio,
+        usd: nextPortfolio.usd + sellValue - fee,
+        xrp: remainingXrp,
+        avgCostBasis: remainingXrp === 0 ? 0 : nextPortfolio.avgCostBasis,
+      };
 
-    action = 'SELL';
+      action = 'SELL';
+    }
+  }
+
+  if (
+    action === 'SELL'
+    && !forceExit
+    && realizedPnl !== null
+    && amount > 0
+    && nextPortfolio.xrp > 0
+  ) {
+    const sellNotional = amount * price;
+    const realizedLossPct = sellNotional > 0 ? Math.abs(Math.min(0, realizedPnl)) / sellNotional : 0;
+    if (realizedLossPct <= maxTolerableLossSellPct) {
+      guardReason = `voorkom micro-verlies verkoop (${(realizedLossPct * 100).toFixed(2)}%)`;
+    }
+  }
+
+  if (guardReason) {
+    nextPortfolio = basePortfolio;
+    action = 'HOLD';
+    amount = 0;
+    realizedPnl = null;
+    trade = null;
   }
 
   const totalValueAfter = nextPortfolio.usd + nextPortfolio.xrp * price;
@@ -320,7 +460,9 @@ export function runStrategy({
 
   const strength = action === 'HOLD' ? 'NORMAL' : strengthFromDelta(delta);
   const reason = action === 'HOLD'
-    ? `Regime ${regime}: wait for higher-confidence setup (score ${totalScore.toFixed(1)})`
+    ? guardReason
+      ? `Regime ${regime}: hold (${guardReason}) (score ${totalScore.toFixed(1)})`
+      : `Regime ${regime}: wait for higher-confidence setup (score ${totalScore.toFixed(1)})`
     : `Regime ${regime}: rebalance toward ${(target * 100).toFixed(0)}% ${assetLabel} (score ${totalScore.toFixed(1)})`;
 
   if (action !== 'HOLD') {
