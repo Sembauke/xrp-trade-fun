@@ -18,7 +18,7 @@ export default function App({ apiBase, expectedSymbol }: { apiBase?: string; exp
   };
 
   const {
-    currentPrice, previousPrice, portfolio, trades, decision,
+    currentPrice, previousPrice, portfolio, activePositions, trades, decision,
     indicators, chartData, isLoading, isRunning, error, lastUpdate,
     totalValue, symbol,
     toggleRunning,
@@ -98,6 +98,7 @@ export default function App({ apiBase, expectedSymbol }: { apiBase?: string; exp
             currentPrice={currentPrice}
             avgCostBasis={portfolio.avgCostBasis}
             totalValue={totalValue}
+            activePositions={activePositions}
             symbol={symbol}
           />
 

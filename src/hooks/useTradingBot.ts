@@ -18,6 +18,7 @@ function buildDefaultState(symbol = 'XRPUSDT'): BotState {
       startingValue: 10_000,
       avgCostBasis: 0,
     },
+    activePositions: [],
     trades: [],
     decision: null,
     indicators: null,

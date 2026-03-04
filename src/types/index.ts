@@ -26,6 +26,18 @@ export interface Trade {
   realizedPnl?: number | null;
 }
 
+export interface ActivePosition {
+  id: string;
+  time: string | Date;
+  symbol: string;
+  amount: number;
+  entryPrice: number;
+  marketValue: number;
+  costValue: number;
+  unrealizedPnl: number;
+  unrealizedPnlPct: number;
+}
+
 export interface Signal {
   name: string;
   value: number;
@@ -84,6 +96,7 @@ export interface BotState {
   currentPrice: number;
   previousPrice: number;
   portfolio: Portfolio;
+  activePositions: ActivePosition[];
   trades: Trade[];
   decision: Decision | null;
   indicators: Indicators | null;

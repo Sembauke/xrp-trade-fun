@@ -129,10 +129,21 @@ export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT', compact
                   )}
                   <td className={`py-2.5 text-right font-mono text-xs ${
                     livePnl === null
-                      ? 'text-slate-500'
+                      ? hasRealized
+                        ? (trade.realizedPnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'
+                        : 'text-slate-500'
                       : livePnl >= 0 ? 'text-emerald-400' : 'text-red-400'
                   }`}>
-                    {livePnl === null ? 'gesloten' : (
+                    {livePnl === null ? (
+                      hasRealized
+                        ? (
+                          <>
+                            {(trade.realizedPnl ?? 0) >= 0 ? '+' : ''}{(trade.realizedPnl ?? 0).toFixed(2)}
+                            <span className="text-slate-500 ml-1">(gesloten)</span>
+                          </>
+                        )
+                        : 'gesloten'
+                    ) : (
                       <>
                         {livePnl >= 0 ? '+' : ''}{livePnl.toFixed(2)}
                         <span className="text-slate-500 ml-1">

@@ -387,11 +387,65 @@ export function resetAll(db) {
   tx();
 }
 
+function buildActivePositions(tradesAsc, currentPrice, symbol) {
+  const epsilon = 1e-8;
+  const lots = [];
+
+  for (const trade of tradesAsc) {
+    const amount = Number(trade.amount) || 0;
+    if (amount <= epsilon) continue;
+
+    if (trade.action === 'BUY') {
+      lots.push({
+        sourceTradeId: trade.id,
+        time: trade.time,
+        entryPrice: Number(trade.price) || 0,
+        remainingAmount: amount,
+      });
+      continue;
+    }
+
+    if (trade.action === 'SELL') {
+      let remainingToClose = amount;
+      while (remainingToClose > epsilon && lots.length > 0) {
+        const lot = lots[0];
+        const closedAmount = Math.min(remainingToClose, lot.remainingAmount);
+        lot.remainingAmount -= closedAmount;
+        remainingToClose -= closedAmount;
+        if (lot.remainingAmount <= epsilon) {
+          lots.shift();
+        }
+      }
+    }
+  }
+
+  return lots
+    .filter((lot) => lot.remainingAmount > epsilon)
+    .map((lot, index) => {
+      const marketValue = lot.remainingAmount * currentPrice;
+      const costValue = lot.remainingAmount * lot.entryPrice;
+      const unrealizedPnl = marketValue - costValue;
+      const unrealizedPnlPct = costValue > 0 ? (unrealizedPnl / costValue) * 100 : 0;
+      return {
+        id: `${lot.sourceTradeId}-${index}`,
+        time: lot.time,
+        symbol,
+        amount: lot.remainingAmount,
+        entryPrice: lot.entryPrice,
+        marketValue,
+        costValue,
+        unrealizedPnl,
+        unrealizedPnlPct,
+      };
+    });
+}
+
 export function getState(db, symbol = 'XRPUSDT') {
   const fallbackStartingValue = db.__startingCapital ?? 10_000;
   const defaultPortfolio = createDefaultPortfolio(fallbackStartingValue);
   const portfolio = loadPortfolio(db);
   const bot = db.prepare('SELECT * FROM bot_state WHERE id = 1').get();
+  const currentPrice = bot?.current_price ?? 0;
   const trades = db
     .prepare('SELECT * FROM trades ORDER BY time DESC LIMIT 50')
     .all()
@@ -406,6 +460,10 @@ export function getState(db, symbol = 'XRPUSDT') {
       totalAfter: row.total_after,
       realizedPnl: row.realized_pnl,
     }));
+  const allTradesAsc = db
+    .prepare('SELECT id, time, action, price, amount FROM trades ORDER BY time ASC')
+    .all();
+  const activePositions = buildActivePositions(allTradesAsc, currentPrice, symbol);
 
   const chartData = db
     .prepare('SELECT * FROM chart_points ORDER BY time ASC')
@@ -424,9 +482,10 @@ export function getState(db, symbol = 'XRPUSDT') {
 
   return {
     candles: [],
-    currentPrice: bot?.current_price ?? 0,
+    currentPrice,
     previousPrice: bot?.previous_price ?? 0,
     portfolio,
+    activePositions,
     trades,
     decision: bot?.decision_json ? JSON.parse(bot.decision_json) : null,
     indicators: bot?.indicators_json ? JSON.parse(bot.indicators_json) : null,
