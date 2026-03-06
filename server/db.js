@@ -294,6 +294,48 @@ export function loadStrategyState(db) {
       envOverrides.maxTargetAllocationPct = maxTargetPct;
     }
   }
+  if (process.env.GEMINI_MIN_CONFIDENCE_TO_TRADE) {
+    const minConfidence = Number(process.env.GEMINI_MIN_CONFIDENCE_TO_TRADE);
+    if (Number.isFinite(minConfidence)) {
+      envOverrides.minConfidenceToTrade = minConfidence;
+    }
+  }
+  if (process.env.GEMINI_TRADE_COOLDOWN_MINUTES) {
+    const cooldownMinutes = Number(process.env.GEMINI_TRADE_COOLDOWN_MINUTES);
+    if (Number.isFinite(cooldownMinutes)) {
+      envOverrides.tradeCooldownMinutes = cooldownMinutes;
+    }
+  }
+  if (process.env.GEMINI_MIN_TRADE_DELTA_PCT) {
+    const minTradeDeltaPct = Number(process.env.GEMINI_MIN_TRADE_DELTA_PCT);
+    if (Number.isFinite(minTradeDeltaPct)) {
+      envOverrides.minTradeDeltaPct = minTradeDeltaPct;
+    }
+  }
+  if (process.env.GEMINI_BEAR_MAX_ALLOCATION_PCT) {
+    const bearMaxAllocationPct = Number(process.env.GEMINI_BEAR_MAX_ALLOCATION_PCT);
+    if (Number.isFinite(bearMaxAllocationPct)) {
+      envOverrides.bearMaxAllocationPct = bearMaxAllocationPct;
+    }
+  }
+  if (process.env.GEMINI_TRANSITION_MAX_ALLOCATION_PCT) {
+    const transitionMaxAllocationPct = Number(process.env.GEMINI_TRANSITION_MAX_ALLOCATION_PCT);
+    if (Number.isFinite(transitionMaxAllocationPct)) {
+      envOverrides.transitionMaxAllocationPct = transitionMaxAllocationPct;
+    }
+  }
+  if (process.env.GEMINI_DRAWDOWN_GUARD_PCT) {
+    const drawdownGuardPct = Number(process.env.GEMINI_DRAWDOWN_GUARD_PCT);
+    if (Number.isFinite(drawdownGuardPct)) {
+      envOverrides.portfolioDrawdownGuardPct = drawdownGuardPct;
+    }
+  }
+  if (process.env.GEMINI_PROFIT_TAKE_MIN_PCT) {
+    const profitTakeMinPct = Number(process.env.GEMINI_PROFIT_TAKE_MIN_PCT);
+    if (Number.isFinite(profitTakeMinPct)) {
+      envOverrides.profitTakeMinPct = profitTakeMinPct;
+    }
+  }
 
   return {
     variant: row.variant,

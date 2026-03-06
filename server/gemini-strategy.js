@@ -17,6 +17,13 @@ const envMinOrderUsd = Number(process.env.GEMINI_MIN_ORDER_USD ?? process.env.CL
 const envMaxTradeStepPct = Number(process.env.GEMINI_MAX_TRADE_STEP_PCT ?? process.env.CLAUDE_MAX_TRADE_STEP_PCT ?? 35);
 const envMinTargetPct = Number(process.env.GEMINI_MIN_TARGET_PCT ?? process.env.CLAUDE_MIN_TARGET_PCT ?? 0);
 const envMaxTargetPct = Number(process.env.GEMINI_MAX_TARGET_PCT ?? process.env.CLAUDE_MAX_TARGET_PCT ?? 95);
+const envMinConfidenceToTrade = Number(process.env.GEMINI_MIN_CONFIDENCE_TO_TRADE ?? 65);
+const envTradeCooldownMinutes = Number(process.env.GEMINI_TRADE_COOLDOWN_MINUTES ?? 20);
+const envMinTradeDeltaPct = Number(process.env.GEMINI_MIN_TRADE_DELTA_PCT ?? 2.0);
+const envBearMaxAllocationPct = Number(process.env.GEMINI_BEAR_MAX_ALLOCATION_PCT ?? 15);
+const envTransitionMaxAllocationPct = Number(process.env.GEMINI_TRANSITION_MAX_ALLOCATION_PCT ?? 45);
+const envPortfolioDrawdownGuardPct = Number(process.env.GEMINI_DRAWDOWN_GUARD_PCT ?? 2.5);
+const envProfitTakeMinPct = Number(process.env.GEMINI_PROFIT_TAKE_MIN_PCT ?? 0.35);
 
 export const defaultStrategyConfig = {
   provider: 'gemini',
@@ -30,9 +37,16 @@ export const defaultStrategyConfig = {
   minOrderUsd: Number.isFinite(envMinOrderUsd) && envMinOrderUsd > 0 ? envMinOrderUsd : 15,
   maxTradeAllocationStepPct: Number.isFinite(envMaxTradeStepPct) && envMaxTradeStepPct > 0
     ? envMaxTradeStepPct
-    : 35,
+    : 15,
   minTargetAllocationPct: Number.isFinite(envMinTargetPct) ? envMinTargetPct : 0,
   maxTargetAllocationPct: Number.isFinite(envMaxTargetPct) ? envMaxTargetPct : 95,
+  minConfidenceToTrade: Number.isFinite(envMinConfidenceToTrade) ? envMinConfidenceToTrade : 65,
+  tradeCooldownMinutes: Number.isFinite(envTradeCooldownMinutes) ? envTradeCooldownMinutes : 20,
+  minTradeDeltaPct: Number.isFinite(envMinTradeDeltaPct) ? envMinTradeDeltaPct : 2.0,
+  bearMaxAllocationPct: Number.isFinite(envBearMaxAllocationPct) ? envBearMaxAllocationPct : 15,
+  transitionMaxAllocationPct: Number.isFinite(envTransitionMaxAllocationPct) ? envTransitionMaxAllocationPct : 45,
+  portfolioDrawdownGuardPct: Number.isFinite(envPortfolioDrawdownGuardPct) ? envPortfolioDrawdownGuardPct : 2.5,
+  profitTakeMinPct: Number.isFinite(envProfitTakeMinPct) ? envProfitTakeMinPct : 0.35,
 };
 
 export function createDefaultPortfolio(startingCapital = STARTING_CAPITAL) {
@@ -154,13 +168,20 @@ function normalizeConfig(overrides = {}) {
     ...merged,
     decisionIntervalMinutes: Math.max(1, Number(merged.decisionIntervalMinutes) || defaultStrategyConfig.decisionIntervalMinutes),
     minOrderUsd: Math.max(1, Number(merged.minOrderUsd) || defaultStrategyConfig.minOrderUsd),
-    maxTradeAllocationStepPct: clamp(Number(merged.maxTradeAllocationStepPct), 1, 100),
+    maxTradeAllocationStepPct: clamp(Number(merged.maxTradeAllocationStepPct), 1, 20),
     minTargetAllocationPct: minTarget,
     maxTargetAllocationPct: maxTarget,
     model: normalizeModelName(merged.model || defaultStrategyConfig.model),
     temperature: clamp(Number(merged.temperature), 0, 1),
     maxTokens: Math.max(64, Number(merged.maxTokens) || defaultStrategyConfig.maxTokens),
     timeoutMs: Math.max(3_000, Number(merged.timeoutMs) || defaultStrategyConfig.timeoutMs),
+    minConfidenceToTrade: clamp(Number(merged.minConfidenceToTrade), 0, 100),
+    tradeCooldownMinutes: clamp(Number(merged.tradeCooldownMinutes), 0, 240),
+    minTradeDeltaPct: clamp(Number(merged.minTradeDeltaPct), 0, 30),
+    bearMaxAllocationPct: clamp(Number(merged.bearMaxAllocationPct), minTarget, maxTarget),
+    transitionMaxAllocationPct: clamp(Number(merged.transitionMaxAllocationPct), minTarget, maxTarget),
+    portfolioDrawdownGuardPct: clamp(Number(merged.portfolioDrawdownGuardPct), 0, 50),
+    profitTakeMinPct: clamp(Number(merged.profitTakeMinPct), 0, 10),
   };
 }
 
@@ -191,6 +212,7 @@ function buildPrompt({
     '2) Avoid overtrading: if edge is weak/unclear, stay near current allocation.',
     '3) Size conviction: large allocation shifts require strong evidence and confidence.',
     '4) In conflicting signals, prefer caution over aggression.',
+    '- When in net profit after fees and evidence weakens, prefer partial de-risking to lock gains.',
     '',
     'ALLOCATION DECISION RULES:',
     `- targetAllocationPct must be within [${config.minTargetAllocationPct}, ${config.maxTargetAllocationPct}].`,
@@ -480,8 +502,39 @@ export async function runGeminiStrategy({
     };
   }
 
+  const guardNotes = [];
+  let guardedTargetPct = normalized.targetAllocationPct;
+
+  if (regime === 'BEAR' && guardedTargetPct > strategyConfig.bearMaxAllocationPct) {
+    guardedTargetPct = strategyConfig.bearMaxAllocationPct;
+    guardNotes.push(`bear cap ${strategyConfig.bearMaxAllocationPct.toFixed(1)}%`);
+  }
+  if (regime === 'TRANSITION' && guardedTargetPct > strategyConfig.transitionMaxAllocationPct) {
+    guardedTargetPct = strategyConfig.transitionMaxAllocationPct;
+    guardNotes.push(`transition cap ${strategyConfig.transitionMaxAllocationPct.toFixed(1)}%`);
+  }
+
+  const portfolioPnlPctBefore = startingCapital > 0
+    ? ((totalValueBefore - startingCapital) / startingCapital) * 100
+    : 0;
+  if (
+    portfolioPnlPctBefore <= -strategyConfig.portfolioDrawdownGuardPct
+    && guardedTargetPct > currentAllocationPct
+  ) {
+    guardedTargetPct = currentAllocationPct;
+    guardNotes.push(`drawdown guard actief (${portfolioPnlPctBefore.toFixed(2)}%)`);
+  }
+
+  const confidenceBlocked = normalized.confidence < strategyConfig.minConfidenceToTrade;
+  if (confidenceBlocked) {
+    guardedTargetPct = currentAllocationPct;
+    guardNotes.push(
+      `confidence ${normalized.confidence.toFixed(0)}% < min ${strategyConfig.minConfidenceToTrade.toFixed(0)}%`,
+    );
+  }
+
   const maxStepPct = strategyConfig.maxTradeAllocationStepPct;
-  const deltaPctRaw = normalized.targetAllocationPct - currentAllocationPct;
+  const deltaPctRaw = guardedTargetPct - currentAllocationPct;
   const deltaPctLimited = clamp(deltaPctRaw, -maxStepPct, maxStepPct);
   const effectiveTargetPct = clamp(
     currentAllocationPct + deltaPctLimited,
@@ -499,7 +552,48 @@ export async function runGeminiStrategy({
   let realizedPnl = null;
   let holdReason = '';
 
-  if (desiredUsdShift > minOrderUsd && nextPortfolio.usd > minOrderUsd) {
+  const nowMsCandidate = Date.parse(tradeTimeIso ?? '');
+  const nowMs = Number.isFinite(nowMsCandidate) ? nowMsCandidate : Date.now();
+  const lastTradeMsCandidate = Date.parse(lastTrade?.time ?? '');
+  const lastTradeMs = Number.isFinite(lastTradeMsCandidate) ? lastTradeMsCandidate : null;
+  const cooldownMs = strategyConfig.tradeCooldownMinutes * 60 * 1000;
+  const cooldownBlocked = (
+    cooldownMs > 0
+    && Number.isFinite(lastTradeMs)
+    && (nowMs - lastTradeMs) >= 0
+    && (nowMs - lastTradeMs) < cooldownMs
+  );
+  const cooldownRemainingMin = cooldownBlocked
+    ? Math.ceil((cooldownMs - (nowMs - lastTradeMs)) / 60_000)
+    : 0;
+
+  const minDeltaBlocked = Math.abs(deltaPctRaw) < strategyConfig.minTradeDeltaPct;
+  const netPositionPnlPct = (
+    portfolio.avgCostBasis > 0 && nextPortfolio.xrp > 0
+      ? (((price * (1 - TRADE_FEE)) - portfolio.avgCostBasis) / portfolio.avgCostBasis) * 100
+      : 0
+  );
+  const reduceExposureRequested = deltaPctRaw < 0;
+  const profitTakeOverride = (
+    reduceExposureRequested
+    && nextPortfolio.xrp * price > minOrderUsd
+    && netPositionPnlPct >= strategyConfig.profitTakeMinPct
+  );
+  if (profitTakeOverride) {
+    guardNotes.push(`profit lock ${netPositionPnlPct.toFixed(2)}%`);
+  }
+
+  const confidenceGateBlocked = confidenceBlocked && !profitTakeOverride;
+  const cooldownGateBlocked = cooldownBlocked && !profitTakeOverride;
+  const minDeltaGateBlocked = minDeltaBlocked && !profitTakeOverride;
+
+  if (confidenceGateBlocked) {
+    holdReason = `confidence onder minimum (${normalized.confidence.toFixed(0)}% < ${strategyConfig.minConfidenceToTrade.toFixed(0)}%)`;
+  } else if (cooldownGateBlocked) {
+    holdReason = `cooldown actief (${cooldownRemainingMin}m resterend)`;
+  } else if (minDeltaGateBlocked) {
+    holdReason = `allocatieverschil te klein (${Math.abs(deltaPctRaw).toFixed(2)}% < ${strategyConfig.minTradeDeltaPct.toFixed(2)}%)`;
+  } else if (desiredUsdShift > minOrderUsd && nextPortfolio.usd > minOrderUsd) {
     const spend = Math.min(desiredUsdShift, nextPortfolio.usd * 0.95);
     const fee = spend * TRADE_FEE;
     const buyValue = spend - fee;
@@ -516,8 +610,13 @@ export async function runGeminiStrategy({
     nextPortfolio.avgCostBasis = avgCostBasis;
 
     action = 'BUY';
-  } else if (desiredUsdShift < -minOrderUsd && nextPortfolio.xrp * price > minOrderUsd) {
-    const sellValue = Math.min(Math.abs(desiredUsdShift), nextPortfolio.xrp * price);
+  } else if ((desiredUsdShift < -minOrderUsd || profitTakeOverride) && nextPortfolio.xrp * price > minOrderUsd) {
+    const requestedSellValue = Math.abs(desiredUsdShift);
+    const minProfitTakeSellValue = profitTakeOverride ? minOrderUsd : 0;
+    const sellValue = Math.min(
+      Math.max(requestedSellValue, minProfitTakeSellValue),
+      nextPortfolio.xrp * price,
+    );
     amount = sellValue / Math.max(price, 1e-9);
     const fee = sellValue * TRADE_FEE;
     realizedPnl = (price - nextPortfolio.avgCostBasis) * amount - fee;
@@ -542,10 +641,11 @@ export async function runGeminiStrategy({
   const pnl = totalValueAfter - startingCapital;
   const pnlPct = startingCapital > 0 ? (pnl / startingCapital) * 100 : 0;
 
-  const decisionReasonBase = `Gemini: ${normalized.reason} (confidence ${normalized.confidence.toFixed(0)}%, target ${normalized.targetAllocationPct.toFixed(1)}%)`;
+  const decisionReasonBase = `Gemini: ${normalized.reason} (confidence ${normalized.confidence.toFixed(0)}%, target ${normalized.targetAllocationPct.toFixed(1)}%, effectief ${effectiveTargetPct.toFixed(1)}%)`;
+  const guardSummary = guardNotes.length > 0 ? ` | guards: ${guardNotes.join('; ')}` : '';
   const reason = action === 'HOLD'
-    ? `${decisionReasonBase}${holdReason ? ` | hold: ${holdReason}` : ''}`
-    : decisionReasonBase;
+    ? `${decisionReasonBase}${guardSummary}${holdReason ? ` | hold: ${holdReason}` : ''}`
+    : `${decisionReasonBase}${guardSummary}`;
 
   let trade = null;
   if (action !== 'HOLD' && amount > 0) {

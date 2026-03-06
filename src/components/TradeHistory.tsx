@@ -18,6 +18,12 @@ function translateReason(reason: string) {
     .replace('score', 'score');
 }
 
+function formatSignedUsd(value: number) {
+  const abs = Math.abs(value);
+  const decimals = abs >= 1 ? 2 : abs >= 0.1 ? 3 : 4;
+  return `${value >= 0 ? '+' : ''}${value.toFixed(decimals)}`;
+}
+
 export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT', compact = false }: TradeHistoryProps) {
   const pageSize = 10;
   const [page, setPage] = useState(1);
@@ -123,7 +129,7 @@ export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT', compact
                         : 'text-slate-500'
                     }`}>
                       {hasRealized
-                        ? `${(trade.realizedPnl ?? 0) >= 0 ? '+' : ''}${(trade.realizedPnl ?? 0).toFixed(2)}`
+                        ? formatSignedUsd(trade.realizedPnl ?? 0)
                         : '-'}
                     </td>
                   )}
@@ -138,14 +144,14 @@ export function TradeHistory({ trades, currentPrice, symbol = 'XRPUSDT', compact
                       hasRealized
                         ? (
                           <>
-                            {(trade.realizedPnl ?? 0) >= 0 ? '+' : ''}{(trade.realizedPnl ?? 0).toFixed(2)}
+                            {formatSignedUsd(trade.realizedPnl ?? 0)}
                             <span className="text-slate-500 ml-1">(gesloten)</span>
                           </>
                         )
                         : 'gesloten'
                     ) : (
                       <>
-                        {livePnl >= 0 ? '+' : ''}{livePnl.toFixed(2)}
+                        {formatSignedUsd(livePnl)}
                         <span className="text-slate-500 ml-1">
                           ({livePnl >= 0 ? '+' : ''}{livePnlPct.toFixed(2)}%)
                         </span>
